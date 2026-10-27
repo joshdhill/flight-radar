@@ -176,6 +176,12 @@
   var DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   function card8(deg) { return DIRS[Math.round(deg / 45) % 8]; }
   function routeText(r) { return r ? r.replace('-', ' → ') : ''; }
+  // Short model name for map labels: "Boeing 737-800" -> "737-800", "Airbus A320neo" -> "A320neo"
+  function shortType(type) {
+    var n = TYPES[type || ''];
+    if (!n) return type || '';
+    return n.replace(/^(Boeing|Airbus|Embraer) /, '');
+  }
 
 
   /* ---------- military helpers (same rules as api/_lib.js) ---------- */
@@ -234,7 +240,7 @@
   root.Core = {
     setHome: setHome, getHome: getHome, toXY: toXY, bearingOf: bearingOf, PASS_NM: PASS_NM, MIL_LABEL: MIL_LABEL,
     createLiveFeed: createLiveFeed, createTracker: createTracker, classOf: classOf, cpa: cpa, altStop: altStop,
-    fmtAlt: fmtAlt, fmtDur: fmtDur, card8: card8, routeText: routeText, TYPES: TYPES,
+    fmtAlt: fmtAlt, fmtDur: fmtDur, card8: card8, routeText: routeText, shortType: shortType, TYPES: TYPES,
     militaryFlag: militaryFlag, callsignNote: callsignNote, distanceNm: distanceNm, compactRow: compactRow, extractJson: extractJson, looksLikeAirline: looksLikeAirline
   };
 })(typeof window !== 'undefined' ? window : globalThis);

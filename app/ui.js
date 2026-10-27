@@ -194,11 +194,12 @@
     });
     ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.stroke();
   }
+  // Label next to each plane: the route is the headline, type and altitude sit underneath.
   function labelFor(a) {
-    if (a.mil) return { top: a.call, chip: 'MIL' };
-    var rt = routeOf(a);
-    if (rt) return { top: C.routeText(rt), chip: '' };
-    return { top: a.call, chip: '' };
+    var rt = routeOf(a), ty = C.shortType(a.type);
+    if (a.mil) return { top: a.call, chip: 'MIL', strong: true, sub: ty };
+    if (rt) return { top: C.routeText(rt), chip: '', strong: true, sub: ty };
+    return { top: a.call, chip: '', strong: false, sub: ty };
   }
   function drawTraffic(t) {
     var hp = homePx(), k = scale(), list = feed.list, sel = null, i, j, ac, ow = overlayW();
@@ -239,30 +240,35 @@
       S.draw(ctx, { cls: x.cls, type: x.type, x: x.px, y: x.py, track: x.trk, fill: altColor(x.alt), outline: col['land'], scale: x === sel ? 1.12 : 1, time: reduced ? 0 : t });
       if (x.mil) brackets(x.px, x.py, 20, col["mil"]);
     });
-    // labels: route (or callsign) over altitude, without overlaps
+    // labels: route (or callsign) as the headline, type and altitude underneath, without overlaps
     var boxes = [[hp[0] - 14, hp[1] - 14, 28, 28]];
+    var F_TOP = '700 13px "B612 Mono", ui-monospace, monospace', F_TOP2 = '700 11px "B612 Mono", ui-monospace, monospace';
+    var F_SUB = '10.5px "B612", system-ui, sans-serif', F_ALT = '10px "B612 Mono", ui-monospace, monospace';
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     order.forEach(function (x) {
       if (x !== sel && !x.mil && x.d > state.range * 1.25) return;
-      var L = labelFor(x), t2 = C.fmtAlt(x.alt);
-      ctx.font = '700 10.5px "B612 Mono", ui-monospace, monospace'; var w1 = ctx.measureText(L.top).width + (L.chip ? 30 : 0);
-      ctx.font = '10px "B612 Mono", ui-monospace, monospace'; var w2 = ctx.measureText(t2).width;
-      var w = Math.max(w1, w2) + 4, lx = x.px + 21, ly = x.py - 13, hh = 26;
+      var L = labelFor(x), alt = C.fmtAlt(x.alt), sub = L.sub ? L.sub + '  ' : '';
+      var ftop = L.strong ? F_TOP : F_TOP2;
+      ctx.font = ftop; var w1 = ctx.measureText(L.top).width + (L.chip ? 30 : 0);
+      ctx.font = F_SUB; var ws = ctx.measureText(sub).width;
+      ctx.font = F_ALT; var wa = ctx.measureText(alt).width;
+      var w = Math.max(w1, ws + wa) + 4, lx = x.px + 21, ly = x.py - 16, hh = 32;
       var hit = false;
       for (var m = 0; m < boxes.length; m++) { var b = boxes[m]; if (lx < b[0] + b[2] && lx + w > b[0] && ly < b[1] + b[3] && ly + hh > b[1]) { hit = true; break; } }
       if (hit && x !== sel && !x.mil) return;
       boxes.push([lx, ly, w, hh]);
-      var cx = lx;
+      var cx = lx, ty = x.py - 7, sy = x.py + 9;
       if (L.chip) {
         ctx.font = '700 8.5px "B612 Mono", ui-monospace, monospace';
-        ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx, x.py - 12, 26, 12, 3); else ctx.rect(cx, x.py - 12, 26, 12);
-        ctx.fillStyle = col['mil']; ctx.fill(); ctx.fillStyle = col['land']; ctx.fillText(L.chip, cx + 4, x.py - 5.5); cx += 30;
+        ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx, ty - 6.5, 26, 13, 3); else ctx.rect(cx, ty - 6.5, 26, 13);
+        ctx.fillStyle = col['mil']; ctx.fill(); ctx.fillStyle = col['land']; ctx.fillText(L.chip, cx + 4, ty + 0.5); cx += 30;
       }
-      ctx.lineWidth = 3; ctx.strokeStyle = col['land']; ctx.lineJoin = 'round';
-      ctx.font = '700 10.5px "B612 Mono", ui-monospace, monospace';
-      ctx.strokeText(L.top, cx, x.py - 6); ctx.fillStyle = x === sel || x.mil ? col['fg'] : col['fg-muted']; ctx.fillText(L.top, cx, x.py - 6);
-      ctx.font = '10px "B612 Mono", ui-monospace, monospace';
-      ctx.strokeText(t2, lx, x.py + 7); ctx.fillStyle = altColor(x.alt, 0.95); ctx.fillText(t2, lx, x.py + 7);
+      ctx.lineWidth = 3.4; ctx.strokeStyle = col['land']; ctx.lineJoin = 'round';
+      ctx.font = ftop; ctx.strokeText(L.top, cx, ty);
+      ctx.fillStyle = L.strong || x === sel ? col['fg'] : col['fg-muted']; ctx.fillText(L.top, cx, ty);
+      ctx.lineWidth = 3;
+      if (sub) { ctx.font = F_SUB; ctx.strokeText(sub, lx, sy); ctx.fillStyle = col['fg-muted']; ctx.fillText(sub, lx, sy); }
+      ctx.font = F_ALT; ctx.strokeText(alt, lx + ws, sy); ctx.fillStyle = altColor(x.alt, 0.95); ctx.fillText(alt, lx + ws, sy);
     });
     drawEdgeMarkers(hp);
   }
@@ -410,7 +416,7 @@
     if (!rows.length) return empty(ul, state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now.' : 'No aircraft yet.');
     rows.forEach(function (ac) {
       var rt = routeOf(ac);
-      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, rt ? ac.call : ac.type, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
+      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, [rt ? ac.call : '', C.shortType(ac.type)].filter(Boolean).join(' · '), C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
     });
   }
   function renderMil() {
@@ -418,7 +424,7 @@
     if (!state.milOk) return empty(ul, 'Loading military aircraft within ' + MIL_RANGE + ' nm…');
     if (!rows.length) return empty(ul, 'No military aircraft broadcasting within ' + MIL_RANGE + ' nm right now.');
     rows.forEach(function (ac) {
-      ul.append(row(ac, function () { select(ac.id, true); }, [ac.call, ac.type || '', C.fmtAlt(ac.alt), Math.round(ac.d) + ' nm ' + C.card8(ac.brg)]));
+      ul.append(row(ac, function () { select(ac.id, true); }, [ac.call, C.shortType(ac.type), C.fmtAlt(ac.alt), Math.round(ac.d) + ' nm ' + C.card8(ac.brg)]));
     });
   }
   function renderLog() {

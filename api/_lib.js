@@ -98,17 +98,39 @@ async function lookupRoute(cs) {
   }
 }
 
-export async function routesFor(callsigns, maxNew = 8) {
-  const now = Date.now(), todo = [];
-  for (const cs of callsigns) {
-    if (!looksLikeAirline(cs)) continue;
-    const c = routeCache.get(cs);
-    if (c && now - c.at < (c.route ? ROUTE_HIT_MS : ROUTE_MISS_MS)) continue;
-    if (todo.length < maxNew) todo.push(cs);
+function fresh(c, now) { return c && now - c.at < (c.route ? ROUTE_HIT_MS : ROUTE_MISS_MS); }
+
+// One batch request to adsb.lol's route service for every airline callsign we don't know yet.
+// It also checks the route is plausible for where the plane is right now.
+async function routesetBatch(planes) {
+  const res = await fetch('https://api.adsb.lol/api/0/routeset', {
+    method: 'POST',
+    headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ planes: planes.slice(0, 100).map((p) => ({ callsign: p.cs, lat: p.lat, lng: p.lon })) }),
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!res.ok) return;
+  const list = await res.json();
+  const now = Date.now();
+  for (const x of Array.isArray(list) ? list : []) {
+    const codes = (x._airport_codes_iata || '').split('-').filter(Boolean);
+    if (x.airport_codes && x.airport_codes !== 'unknown' && x.plausible !== false && codes.length >= 2) {
+      routeCache.set(x.callsign, { at: now, route: `${codes[0]}-${codes[codes.length - 1]}` });
+    }
   }
-  await Promise.all(todo.map(lookupRoute));
+}
+
+// planes: [{ cs, lat, lon }] -> { callsign: "IAD-ORD" }
+export async function routesFor(planes, maxAdsbdb = 6) {
+  const now = Date.now();
+  const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now));
+  if (need.length) {
+    try { await routesetBatch(need); } catch { /* fall through to adsbdb */ }
+    const rest = need.filter((p) => !fresh(routeCache.get(p.cs), now)).slice(0, maxAdsbdb);
+    await Promise.all(rest.map((p) => lookupRoute(p.cs)));
+  }
   const out = {};
-  for (const cs of callsigns) { const c = routeCache.get(cs); if (c && c.route) out[cs] = c.route; }
+  for (const p of planes) { const c = routeCache.get(p.cs); if (c && c.route) out[p.cs] = c.route; }
   return out;
 }
 
