@@ -43,6 +43,13 @@
     function routeCode(cs, lat, lon) {
       var e = routes[cs];
       if (!e || !e.r) return '';
+      if (e.legs && e.legs.length > 2) { // multi-stop flight number: show the leg the plane is on
+        for (var i = 0; i + 1 < e.legs.length; i++) {
+          var A = e.legs[i], B = e.legs[i + 1];
+          if (C.onLeg(lat, lon, A[1], A[2], B[1], B[2])) return A[0] + '-' + B[0];
+        }
+        return '';
+      }
       if (e.o && e.d && !C.onLeg(lat, lon, e.o[0], e.o[1], e.d[0], e.d[1])) return ''; // flight number flying a different leg today
       return e.r;
     }
@@ -64,14 +71,28 @@
       delete queued[item.join(':')];
       try {
         if (kind === 'cs') {
-          var j = await load('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(key));
-          var f = j.response && j.response.flightroute;
-          routes[key] = f && f.origin && f.destination ? {
-            r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
-            f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
-            a: (f.airline && f.airline.name) || '', o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude],
-            ts: Date.now() } : { r: '', ts: Date.now() };
-          if (routes[key].r) { var o = {}; o[key] = routes[key]; hub.routes(o); }
+          var entry = null;
+          try {
+            // adsb.lol's static route file (Virtual Radar Server data) first
+            var v = await load('https://vrs-standing-data.adsb.lol/routes/' + encodeURIComponent(key.slice(0, 2)) + '/' + encodeURIComponent(key) + '.json');
+            var ap = Array.isArray(v._airports) ? v._airports : [];
+            if (ap.length >= 2) {
+              var a0 = ap[0], a1 = ap[ap.length - 1];
+              entry = { r: (a0.iata || a0.icao) + '-' + (a1.iata || a1.icao), f: a0.location || '', t: a1.location || '', a: '',
+                o: [+a0.lat, +a0.lon], d: [+a1.lat, +a1.lon], legs: ap.map(function (x) { return [x.iata || x.icao, +x.lat, +x.lon, x.location || '']; }), ts: Date.now() };
+            }
+          } catch (e1) { if (e1 && (HOSTLESS[e1.code] || DECLINED[e1.code])) throw e1; }
+          if (!entry) {
+            var j = await load('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(key));
+            var f = j.response && j.response.flightroute;
+            entry = f && f.origin && f.destination ? {
+              r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
+              f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
+              a: (f.airline && f.airline.name) || '', o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude],
+              ts: Date.now() } : { r: '', ts: Date.now() };
+          }
+          routes[key] = entry;
+          if (entry.r) { var o = {}; o[key] = entry; hub.routes(o); }
         } else {
           var k2 = await load('https://api.adsbdb.com/v0/aircraft/' + key);
           var a = k2.response && k2.response.aircraft;

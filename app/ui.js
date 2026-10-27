@@ -23,9 +23,18 @@
     ['wood', 'park', 'water', 'river', 'stream', 'major', 'primary', 'secondary'].forEach(function (k) { OSM[k] = decodeSet(raw[k]); });
     OSM.places = raw.places || []; OSM.shields = raw.shields || []; baseKey = '';
   }
+  var WIDE = null;
+  var inlineWide = document.getElementById('widemap');
+  if (inlineWide) {
+    try {
+      var rw = JSON.parse(inlineWide.textContent);
+      WIDE = { ready: true, water: decodeSet(rw.water), major: decodeSet(rw.major), boundary: decodeSet(rw.boundary), places: rw.places || [], airports: rw.airports || [], detailBox: rw.detailBox };
+    } catch (e) {}
+  }
+  if (window.OG_TILES) window.OG_TILES.onUpdate(function () { baseKey = ''; });
   var inlineMap = document.getElementById('mapdata');
   if (inlineMap) { try { useMap(JSON.parse(inlineMap.textContent)); } catch (e) {} }
-  else fetch('data/map.json').then(function (r) { return r.json(); }).then(useMap).catch(function () {});
+  else if (!window.OG_TILES) fetch('data/map.json').then(function (r) { return r.json(); }).then(useMap).catch(function () {});
   var AIRPORTS = [['IAD', 38.9445, -77.4558], ['DCA', 38.8521, -77.0377], ['BWI', 39.1754, -76.6683], ['GAI', 39.1684, -77.1660],
     ['FDK', 39.4176, -77.3743], ['JYO', 39.0777, -77.5570], ['ADW', 38.8108, -76.8669], ['DAA', 38.7150, -77.1810]];
   if (!window.OG_EMBEDDED) fetch('sprites/manifest.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (list) { S.loadOverrides('sprites/', list); }).catch(function () {});
@@ -53,7 +62,7 @@
   (function readColors() {
     var cs = getComputedStyle(document.documentElement), g = function (n) { return cs.getPropertyValue(n).trim(); };
     ['land', 'land-glow', 'wood', 'park', 'water', 'river', 'road-major', 'road-primary', 'road-secondary', 'label', 'label-strong', 'ring', 'zone',
-      'home', 'fg', 'fg-muted', 'fg-faint', 'mil', 'danger'].forEach(function (k) { col[k] = g('--' + k); });
+      'home', 'fg', 'fg-muted', 'fg-faint', 'mil', 'danger', 'boundary'].forEach(function (k) { col[k] = g('--' + k); });
     for (var i = 0; i < 7; i++) {
       var n = parseInt(g('--alt-' + i).replace('#', ''), 16);
       altRGB.push(isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [200, 200, 200]);
@@ -96,12 +105,37 @@
     g.beginPath(); sets.forEach(function (p) { pathOf(g, p); });
     g.strokeStyle = style; g.lineWidth = width; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
   }
+  function dashSet(g, sets, style, width) {
+    if (!sets || !sets.length) return;
+    g.save(); g.setLineDash([5, 4]); strokeSet(g, sets, style, width); g.restore();
+  }
   function fillSet(g, sets, style) {
     if (!sets.length) return;
     g.beginPath(); sets.forEach(function (p) { pathOf(g, p); g.closePath(); });
     g.fillStyle = style; g.fill();
   }
-  function niceStep(R) { return R <= 6 ? 1 : R <= 12 ? 2 : R <= 25 ? 5 : 10; }
+  function niceStep(R) { return R <= 6 ? 1 : R <= 12 ? 2 : R <= 25 ? 5 : R <= 60 ? 10 : R <= 150 ? 25 : 50; }
+
+  // Map shapes for the current view: live tiles on the website, the built-in map in the Claude dashboard.
+  function groupShields(list) {
+    var g = {}; list.forEach(function (s) { (g[s[0]] = g[s[0]] || []).push(s[1]); });
+    return Object.keys(g).map(function (k) { return [k, g[k]]; });
+  }
+  function mapLayers(vb, R) {
+    if (window.OG_TILES) {
+      var mpp = 1852 / scale(), zx = Math.log(156543.03 * Math.cos(C.getHome().lat * RAD) / mpp) / Math.LN2;
+      var L = window.OG_TILES.layersFor(vb, Math.floor(zx - 1));
+      L.shields = groupShields(L.shields);
+      return L;
+    }
+    var W2 = WIDE;
+    return {
+      water: vis(OSM.water, vb), wood: vis(OSM.wood, vb), park: vis(OSM.park, vb), river: vis(OSM.river, vb), stream: vis(OSM.stream, vb),
+      major: vis(OSM.major, vb), primary: vis(OSM.primary, vb), secondary: vis(OSM.secondary, vb), boundary: [],
+      places: OSM.places, shields: OSM.shields, airports: AIRPORTS,
+      wide: W2 && W2.ready ? { water: vis(W2.water, vb), major: vis(W2.major, vb), boundary: vis(W2.boundary, vb), places: W2.places, airports: W2.airports, box: W2.detailBox } : null
+    };
+  }
 
   /* ---------- base map (cached) ---------- */
   function drawBase() {
@@ -119,14 +153,25 @@
     g.fillStyle = glow; g.fillRect(0, 0, W, H);
     var z = Math.max(0.85, Math.min(1.4, 10 / R));
 
-    fillSet(g, vis(OSM.wood, vb), col['wood']);
-    fillSet(g, vis(OSM.park, vb), col['park']);
-    if (R <= 6) strokeSet(g, vis(OSM.stream, vb), col['river'], 0.8);
-    strokeSet(g, vis(OSM.river, vb), col['river'], 1.4 * z);
-    fillSet(g, vis(OSM.water, vb), col['water']);
-    if (R <= 6) strokeSet(g, vis(OSM.secondary, vb), col['road-secondary'], 0.9);
-    if (R <= 14) strokeSet(g, vis(OSM.primary, vb), col['road-primary'], 1.1 * z);
-    strokeSet(g, vis(OSM.major, vb), col['road-major'], 1.7 * z);
+    var M = mapLayers(vb, R);
+    if (M.wide) {
+      // coarse wide-area map, kept outside the detailed area around home
+      var bx = M.wide.box, p1 = proj(bx[1], bx[2]), p2 = proj(bx[0], bx[3]);
+      g.save(); g.beginPath(); g.rect(-10, -10, W + 20, H + 20); g.rect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]); g.clip('evenodd');
+      fillSet(g, M.wide.water, col['water']);
+      dashSet(g, M.wide.boundary, col['boundary'], 1);
+      strokeSet(g, M.wide.major, col['road-major'], 1.4);
+      g.restore();
+    }
+    if (R <= 60) fillSet(g, M.wood, col['wood']);
+    if (R <= 60) fillSet(g, M.park, col['park']);
+    if (R <= 6) strokeSet(g, M.stream, col['river'], 0.8);
+    strokeSet(g, M.river, col['river'], 1.4 * z);
+    fillSet(g, M.water, col['water']);
+    dashSet(g, M.boundary, col['boundary'], 1);
+    if (R <= 6) strokeSet(g, M.secondary, col['road-secondary'], 0.9);
+    if (R <= 30) strokeSet(g, M.primary, col['road-primary'], 1.1 * z);
+    strokeSet(g, M.major, col['road-major'], (R > 60 ? 1.2 : 1.7) * z);
 
     g.beginPath(); g.arc(hp[0], hp[1], 2 * k, 0, Math.PI * 2); g.fillStyle = col['zone']; g.fill();
     var step = niceStep(R);
@@ -156,7 +201,7 @@
     }
     g.font = '700 9.5px "B612 Mono", ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
     var target = Math.min(W, H) * 0.3;
-    OSM.shields.forEach(function (s) {
+    (R <= 60 ? M.shields : []).forEach(function (s) {
       var best = null;
       s[1].forEach(function (p) {
         var q = proj(p[0], p[1]); if (q[0] < 20 || q[1] < 20 || q[0] > W - 20 || q[1] > H - 20) return;
@@ -172,17 +217,20 @@
       g.fillStyle = col['fg-muted']; g.fillText(s[0], best.x, best.y + 0.5);
     });
     g.textAlign = 'left';
-    AIRPORTS.forEach(function (p) {
+    var apts = M.airports.concat(M.wide ? M.wide.airports : []);
+    if (R > 60) apts = apts.filter(function (p) { return p[3] === 'international' || p[3] === 'military' || AIRPORTS.some(function (a) { return a[0] === p[0]; }); });
+    apts.forEach(function (p) {
       var q = proj(p[1], p[2]); if (q[0] < -10 || q[1] < -10 || q[0] > W + 10 || q[1] > H + 10) return;
       g.strokeStyle = col['label']; g.lineWidth = 1.1;
       g.beginPath(); g.arc(q[0], q[1], 3.5, 0, Math.PI * 2); g.stroke();
       var tw = g.measureText(p[0]).width;
       if (free(q[0] + 6, q[1] - 6, tw + 2, 12)) { g.fillStyle = col['label']; g.fillText(p[0], q[0] + 7, q[1]); }
     });
-    var maxTier = R <= 6 ? 3 : 2, shown = 0, cap = R <= 6 ? 22 : 16;
+    var maxTier = R <= 6 ? 3 : R <= 30 ? 2 : 1, shown = 0, cap = R <= 6 ? 22 : R <= 30 ? 16 : 14;
+    var places = M.places.concat(M.wide ? M.wide.places : []);
     g.textAlign = 'center';
-    for (i = 0; i < OSM.places.length && shown < cap; i++) {
-      var p = OSM.places[i]; if (p[1] > maxTier) continue;
+    for (i = 0; i < places.length && shown < cap; i++) {
+      var p = places[i]; if (p[1] > maxTier) continue;
       g.font = p[1] === 1 ? '700 12px "B612", system-ui, sans-serif' : p[1] === 2 ? '11.5px "B612", system-ui, sans-serif' : '10.5px "B612", system-ui, sans-serif';
       var q2 = proj(p[2], p[3]), tw2 = g.measureText(p[0]).width;
       if (!free(q2[0] - tw2 / 2 - 4, q2[1] - 8, tw2 + 8, 16)) continue;
@@ -533,7 +581,7 @@
     e.preventDefault();
     var r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k0 = scale(), c = center();
     var wx = (mx - c[0]) / k0 + state.panX, wy = -(my - c[1]) / k0 + state.panY;
-    state.range = Math.max(2.5, Math.min(22, state.range * Math.exp(e.deltaY * 0.0015)));
+    state.range = Math.max(2.5, Math.min(300, state.range * Math.exp(e.deltaY * 0.0015)));
     var k1 = scale(); state.panX = wx - (mx - c[0]) / k1; state.panY = wy + (my - c[1]) / k1;
     syncRangeSeg();
   }, { passive: false });
@@ -560,8 +608,12 @@
     if (best) select(best.id); else { state.auto = true; renderPanels(); }
   });
 
-  var DEFAULT_HOME = { lat: 39.1732, lon: -77.2717, name: 'Germantown, MD' };
-  function inMapArea(la, lo) { return isFinite(la) && isFinite(lo) && Math.abs(la - 39.17) <= 0.35 && Math.abs(lo + 77.27) <= 0.45; }
+  var DEFAULT_HOME = window.OG_DEFAULT_HOME || { lat: 39.1732, lon: -77.2717, name: 'Germantown, MD' };
+  function inMapArea(la, lo) {
+    if (!isFinite(la) || !isFinite(lo)) return false;
+    if (window.OG_TILES) return Math.abs(la) < 80 && Math.abs(lo) <= 180;
+    return Math.abs(la - 39.17) <= 0.35 && Math.abs(lo + 77.27) <= 0.45;
+  }
   function applyHome(la, lo, name) {
     C.setHome(la, lo); tracker.reset(feed.list); stopFollow(); state.panX = 0; state.panY = 0;
     text('coords', la.toFixed(4) + '°N ' + Math.abs(lo).toFixed(4) + '°W');
@@ -603,12 +655,12 @@
   $('btnHomeReset').addEventListener('click', function () {
     applyHome(DEFAULT_HOME.lat, DEFAULT_HOME.lon, DEFAULT_HOME.name);
     try { localStorage.removeItem('og-home'); } catch (e) {}
-    text('homeNote', 'Home reset to Germantown.'); closeHome();
+    text('homeNote', 'Home reset to ' + DEFAULT_HOME.name + '.'); closeHome();
   });
-  try {
-    var savedHome = JSON.parse(lsGet('og-home') || 'null');
-    if (savedHome && savedHome.length >= 2 && inMapArea(savedHome[0], savedHome[1])) applyHome(savedHome[0], savedHome[1], savedHome[2] || '');
-  } catch (e) {}
+  var savedHome = null;
+  try { savedHome = JSON.parse(lsGet('og-home') || 'null'); } catch (e) {}
+  if (savedHome && savedHome.length >= 2 && inMapArea(savedHome[0], savedHome[1])) applyHome(savedHome[0], savedHome[1], savedHome[2] || '');
+  else applyHome(DEFAULT_HOME.lat, DEFAULT_HOME.lon, DEFAULT_HOME.name);
 
   /* ---------- feeds (the transport decides where data comes from) ---------- */
   var lastSave = 0, lastLookup = null, startHandler = null;

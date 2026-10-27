@@ -44,19 +44,27 @@
   function lookup(ac, hub) {
     if (C.looksLikeAirline(ac.call) && !asked['cs:' + ac.call]) {
       asked['cs:' + ac.call] = 1;
-      fetch('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(ac.call))
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) {
-          var f = j && j.response && j.response.flightroute;
-          if (!f || !f.origin || !f.destination) return;
-          var info = {}; info[ac.call] = {
-            r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
-            f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
-            a: (f.airline && f.airline.name) || '',
-            o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude]
-          };
-          hub.routes(info);
-        }).catch(function () {});
+      var cs = ac.call, info = {};
+      // Cities from adsb.lol's route file (same source as the map labels), airline name from adsbdb.
+      Promise.all([
+        fetch('https://vrs-standing-data.adsb.lol/routes/' + encodeURIComponent(cs.slice(0, 2)) + '/' + encodeURIComponent(cs) + '.json')
+          .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }),
+        fetch('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(cs))
+          .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+      ]).then(function (res) {
+        var v = res[0], f = res[1] && res[1].response && res[1].response.flightroute;
+        var ap = v && Array.isArray(v._airports) ? v._airports : [];
+        var shown = ac.route ? ac.route.split('-') : null, from = null, to = null;
+        if (shown && ap.length >= 2) {
+          ap.forEach(function (x) { if ((x.iata || x.icao) === shown[0] && !from) from = x; if ((x.iata || x.icao) === shown[1]) to = x; });
+        }
+        if (from && to) info[cs] = { r: ac.route, f: from.location || '', t: to.location || '', a: (f && f.airline && f.airline.name) || '' };
+        else if (f && f.origin && f.destination) info[cs] = {
+          r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
+          f: f.origin.municipality || '', t: f.destination.municipality || '', a: (f.airline && f.airline.name) || '',
+          o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude] };
+        if (info[cs]) hub.routes(info);
+      });
     }
     if (ac.id && !asked['hex:' + ac.id] && /^[0-9a-f]{6}$/i.test(ac.id)) {
       asked['hex:' + ac.id] = 1;
@@ -70,9 +78,9 @@
     }
   }
 
-  // Address search for the home location, limited to the area the map covers.
+  // Address search for the home location (nearby results ranked first).
   function geocode(q) {
-    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&bounded=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q);
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q);
     return fetch(url, { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (list) {

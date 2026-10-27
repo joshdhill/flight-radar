@@ -164,9 +164,8 @@ export async function routesFor(planes, maxNew = 30, maxAdsbdb = 6) {
 export function homeFrom(url) {
   const u = new URL(url);
   let lat = parseFloat(u.searchParams.get('lat')), lon = parseFloat(u.searchParams.get('lon'));
-  // stay near Germantown so this endpoint can't be used as an open proxy for anywhere
-  if (!Number.isFinite(lat) || Math.abs(lat - HOME.lat) > 0.5) lat = HOME.lat;
-  if (!Number.isFinite(lon) || Math.abs(lon - HOME.lon) > 0.6) lon = HOME.lon;
+  // home can be anywhere; anything that isn't a valid position falls back to Germantown
+  if (!Number.isFinite(lat) || Math.abs(lat) > 85 || !Number.isFinite(lon) || Math.abs(lon) > 180) { lat = HOME.lat; lon = HOME.lon; }
   return { lat: +lat.toFixed(3), lon: +lon.toFixed(3) };
 }
 

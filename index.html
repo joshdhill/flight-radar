@@ -47,9 +47,10 @@
     <div class="glass hud-ctrl">
       <div class="ctrl-row">
         <div class="seg" id="rangeSeg" role="group" aria-label="Zoom">
-          <button type="button" data-range="5" aria-pressed="false">5 nm</button>
-          <button type="button" data-range="10" aria-pressed="true">10 nm</button>
-          <button type="button" data-range="20" aria-pressed="false">20 nm</button>
+          <button type="button" data-range="5" aria-pressed="false">5</button>
+          <button type="button" data-range="10" aria-pressed="true">10</button>
+          <button type="button" data-range="25" aria-pressed="false">25</button>
+          <button type="button" data-range="250" aria-pressed="false" title="Zoom out to the whole 250 nm military area">250 nm</button>
         </div>
         <button type="button" class="btn icon-btn" id="btnCenter" aria-label="Recenter on home" title="Recenter on home and stop following">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M7 0v3M7 11v3M0 7h3M11 7h3" stroke="currentColor" stroke-width="1.4"/></svg>
@@ -117,7 +118,7 @@
         <form class="home-form" id="homeForm" hidden>
           <div class="home-search" id="homeSearchRow">
             <label for="homeQuery" class="visually-hidden">Address or place</label>
-            <input id="homeQuery" type="search" autocomplete="street-address" placeholder="Address or place near Germantown">
+            <input id="homeQuery" type="search" autocomplete="street-address" placeholder="Address or place">
             <button type="submit" class="btn">Find</button>
           </div>
           <div class="home-actions">
@@ -125,7 +126,7 @@
             <button type="button" class="btn" id="btnHomeGps">Use my location</button>
             <button type="button" class="linkbtn" id="btnHomeReset">Reset</button>
           </div>
-          <p class="foot" id="homeNote">Drag the map so the crosshair sits on your house, then tap Use map center. Saved in this browser.</p>
+          <p class="foot" id="homeNote">Search an address, or drag the map so the crosshair sits on your house and tap Use map center. Saved in this browser.</p>
         </form>
       </section>
     </aside>
@@ -134,6 +135,7 @@
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="app/core.js"></script>
 <script src="app/sprites.js"></script>
+<script src="app/basemap-tiles.js"></script>
 <script src="app/transport-web.js"></script>
 <script src="app/ui.js"></script>
 </body>
