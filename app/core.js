@@ -166,7 +166,7 @@
   }
   function fmtAlt(ft) {
     if (ft >= 18000) return 'FL' + String(Math.round(ft / 100)).padStart(3, '0');
-    return (Math.round(ft / 100) * 100).toLocaleString('en-US');
+    return String(Math.round(ft / 100) * 100);
   }
   function fmtDur(sec) {
     var m = Math.floor(sec / 60), s = Math.round(sec % 60);

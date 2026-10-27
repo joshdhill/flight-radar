@@ -269,15 +269,16 @@
   // Military aircraft outside the view get a pointer at the map edge.
   function drawEdgeMarkers(hp) {
     var ow = overlayW(), x0 = 22, y0 = 22, x1 = W - ow - 22, y1 = H - 40, arrows = [], boxes = [];
+    var reach = Math.max(40, state.range * 4), shown = 0;
     military().forEach(function (a) {
-      if (a.vis) return;
+      if (a.vis || a.d > reach || shown >= 6) return;
       var dx = a.px - hp[0], dy = a.py - hp[1], tt = Infinity;
       if (dx > 0) tt = Math.min(tt, (x1 - hp[0]) / dx); if (dx < 0) tt = Math.min(tt, (x0 - hp[0]) / dx);
       if (dy > 0) tt = Math.min(tt, (y1 - hp[1]) / dy); if (dy < 0) tt = Math.min(tt, (y0 - hp[1]) / dy);
       if (!isFinite(tt) || tt <= 0) return;
       var ex = hp[0] + dx * tt, ey = hp[1] + dy * tt;
       for (var i = 0; i < arrows.length; i++) if (Math.hypot(arrows[i][0] - ex, arrows[i][1] - ey) < 16) return;
-      arrows.push([ex, ey]);
+      arrows.push([ex, ey]); shown++;
       ctx.save(); ctx.translate(ex, ey); ctx.rotate(Math.atan2(dy, dx));
       ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-5, -6); ctx.lineTo(-2, 0); ctx.lineTo(-5, 6); ctx.closePath();
       ctx.lineWidth = 3; ctx.strokeStyle = col['land']; ctx.stroke(); ctx.fillStyle = col['mil']; ctx.fill(); ctx.restore();

@@ -7,7 +7,7 @@ let last = { key: '', at: 0, body: null };
 export async function GET(request) {
   const home = homeFrom(request.url);
   const key = `${home.lat},${home.lon}`;
-  if (last.body && last.key === key && Date.now() - last.at < 7000) return json(last.body);
+  if (last.body && last.key === key && Date.now() - last.at < 4000) return json(last.body);
 
   try {
     const feed = await fetchFeed('point', home.lat, home.lon, 30);

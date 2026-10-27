@@ -122,12 +122,13 @@ export function homeFrom(url) {
   return { lat: +lat.toFixed(3), lon: +lon.toFixed(3) };
 }
 
-export function json(body, { status = 200, sMaxAge = 8 } = {}) {
+export function json(body, { status = 200, sMaxAge = 5 } = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'cache-control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=30`,
+      // Short CDN cache so several screens share one fetch, without serving old positions.
+      'cache-control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=${Math.min(sMaxAge, 10)}`,
     },
   });
 }
