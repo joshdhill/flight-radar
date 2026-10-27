@@ -85,6 +85,7 @@ export function compactRow(a, route) {
 // A callsign can fly several legs a day, and route databases are sometimes out of date,
 // so a route is only shown when the plane's current position lies along it.
 const routeCache = new Map(); // callsign -> { at, legs: [[codeA, latA, lonA, codeB, latB, lonB], ...] }
+export const routeStats = { batchCalls: 0, batchKnown: 0, batchError: '', adsbdbCalls: 0, cached: 0 };
 const ROUTE_HIT_MS = 6 * 3600e3, ROUTE_MISS_MS = 3600e3;
 export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
 const R_NM = 3440.065;
@@ -126,7 +127,8 @@ async function routesetBatch(planes) {
     body: JSON.stringify({ planes: planes.slice(0, 100).map((p) => ({ callsign: p.cs, lat: p.lat, lng: p.lon })) }),
     signal: AbortSignal.timeout(6000),
   });
-  if (!res.ok) return;
+  routeStats.batchCalls++;
+  if (!res.ok) { routeStats.batchError = `routeset answered ${res.status}`; return; }
   const list = await res.json();
   const now = Date.now();
   for (const x of Array.isArray(list) ? list : []) {
@@ -138,6 +140,7 @@ async function routesetBatch(planes) {
       legs.push([a.iata || a.icao, +a.lat, +a.lon, b.iata || b.icao, +b.lat, +b.lon]);
     }
     routeCache.set(x.callsign, { at: now, legs });
+    routeStats.batchKnown++;
   }
 }
 
@@ -146,10 +149,12 @@ export async function routesFor(planes, maxAdsbdb = 6) {
   const now = Date.now();
   const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now));
   if (need.length) {
-    try { await routesetBatch(need); } catch { /* fall through to adsbdb */ }
+    try { await routesetBatch(need); } catch (e) { routeStats.batchError = String(e.message || e).slice(0, 120); }
     const rest = need.filter((p) => !fresh(routeCache.get(p.cs), now)).slice(0, maxAdsbdb);
+    routeStats.adsbdbCalls += rest.length;
     await Promise.all(rest.map((p) => lookupAdsbdb(p.cs)));
   }
+  routeStats.cached = routeCache.size;
   const out = {};
   for (const p of planes) {
     const c = routeCache.get(p.cs);
