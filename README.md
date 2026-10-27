@@ -20,6 +20,12 @@ forward along its heading and speed between updates
 
 The flight feeds don't allow web pages to call them directly, so the two small functions in `api/` fetch for the page. Each response is cached for a few seconds, so several screens share one upstream request.
 
+## Using it
+
+- **Zoom:** 5, 10, 25 or 250 nm buttons, or scroll. At 250 nm ordinary traffic shrinks to small marks so military aircraft stand out.
+- **Tiles at the top:** In view steps through the planes near you, Nearest centers and follows the closest one, Military steps through military aircraft and follows each, Passes opens today's log.
+- **Change home:** search an address, use your location, or drag the map so the crosshair is on your house and tap Use map center. Saved in that browser only, so set it once per device.
+
 ## On your phone
 
 Open the site in Safari, tap Share → **Add to Home Screen**. It opens full screen like an app, with its own icon.
@@ -53,13 +59,13 @@ The same map also runs as a Claude dashboard. A Claude dashboard can't call outs
 node tools/build-claude.mjs
 ```
 
-That writes `dist/claude-dashboard.html`, which Claude publishes as the dashboard.
+That writes `dist/claude-dashboard.html`, which Claude publishes as the dashboard. Optional flags: `--home "lat,lon,Name"` sets the dashboard's home (kept out of this public repo), and `--wide wide.json` adds a coarse map covering the 250 nm military area.
 
 ## Data and credits
 
 - Flights: [adsb.lol](https://adsb.lol) (ODbL), with [airplanes.live](https://airplanes.live) and [adsb.fi](https://adsb.fi) as fallbacks
 - Routes: adsb.lol's route files (from [Virtual Radar Server standing data](https://github.com/vradarserver/standing-data)) and [adsbdb](https://www.adsbdb.com)
-- Map: © OpenStreetMap contributors, via OpenFreeMap vector tiles, baked into `data/map.json`
+- Map: © OpenStreetMap contributors, via [OpenFreeMap](https://openfreemap.org) vector tiles (loaded live on the website; built into the Claude dashboard)
 
 ## Plane images
 
@@ -72,13 +78,14 @@ index.html          the page
 app/style.css       look and layout
 app/core.js         flight math: positions, closest approach, passes, aircraft classes
 app/sprites.js      plane drawings and image overrides
+app/basemap-tiles.js     live OpenFreeMap vector tiles for the website's map
 app/ui.js           map drawing and panels
 app/transport-web.js     website data: this site's /api functions + adsbdb details
 app/transport-claude.js  Claude dashboard data: the desktop app's browser + a shared store
 api/planes.js       live aircraft near home
 api/military.js     military aircraft within 250 nm
 api/_lib.js         shared fetch, fallback, military detection, routes
-data/map.json       roads, water, woods and town names around Germantown
+data/map.json       built-in detailed map around Germantown (used by the Claude dashboard)
 sprites/            optional plane images
 icons/, manifest.webmanifest   home-screen icon and app settings
 tools/build-claude.mjs         builds the Claude dashboard version
