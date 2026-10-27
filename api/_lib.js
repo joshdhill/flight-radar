@@ -85,7 +85,7 @@ export function compactRow(a, route) {
 // A callsign can fly several legs a day, and route databases are sometimes out of date,
 // so a route is only shown when the plane's current position lies along it.
 const routeCache = new Map(); // callsign -> { at, legs: [[codeA, latA, lonA, codeB, latB, lonB], ...] }
-export const routeStats = { batchCalls: 0, batchKnown: 0, batchError: '', adsbdbCalls: 0, cached: 0 };
+export const routeStats = { vrsCalls: 0, vrsKnown: 0, adsbdbCalls: 0, cached: 0 };
 const ROUTE_HIT_MS = 6 * 3600e3, ROUTE_MISS_MS = 3600e3;
 export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
 const R_NM = 3440.065;
@@ -119,42 +119,34 @@ async function lookupAdsbdb(cs) {
   }
 }
 
-// One batch request to adsb.lol's route service for every airline callsign we don't know yet.
-async function routesetBatch(planes) {
-  const res = await fetch('https://api.adsb.lol/api/0/routeset', {
-    method: 'POST',
-    headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ planes: planes.slice(0, 100).map((p) => ({ callsign: p.cs, lat: p.lat, lng: p.lon })) }),
-    signal: AbortSignal.timeout(6000),
-  });
-  routeStats.batchCalls++;
-  const text = await res.text();
-  if (!res.ok || !text.trim().startsWith('[')) {
-    routeStats.batchError = `routeset ${res.status} ${res.headers.get('content-type') || ''} ${text.length}b: ${text.trim().slice(0, 80)}`;
-    return;
-  }
-  const list = JSON.parse(text);
-  const now = Date.now();
-  for (const x of Array.isArray(list) ? list : []) {
+// adsb.lol publishes its route database (from the Virtual Radar Server project) as one small
+// static file per callsign. Returns true when the file had a route.
+async function lookupVrs(cs) {
+  try {
+    const x = await getJson(`https://vrs-standing-data.adsb.lol/routes/${encodeURIComponent(cs.slice(0, 2))}/${encodeURIComponent(cs)}.json`, 4000);
     const ap = Array.isArray(x._airports) ? x._airports : [];
-    if (!x.airport_codes || x.airport_codes === 'unknown' || ap.length < 2) continue;
+    if (ap.length < 2) return false;
     const legs = [];
     for (let i = 0; i + 1 < ap.length; i++) {
       const a = ap[i], b = ap[i + 1];
       legs.push([a.iata || a.icao, +a.lat, +a.lon, b.iata || b.icao, +b.lat, +b.lon]);
     }
-    routeCache.set(x.callsign, { at: now, legs });
-    routeStats.batchKnown++;
+    routeCache.set(cs, { at: Date.now(), legs });
+    routeStats.vrsKnown++;
+    return true;
+  } catch {
+    return false;
   }
 }
 
 // planes: [{ cs, lat, lon }] -> { callsign: "IAD-ORD" } for routes that fit the plane's position
-export async function routesFor(planes, maxAdsbdb = 6) {
+export async function routesFor(planes, maxNew = 30, maxAdsbdb = 6) {
   const now = Date.now();
-  const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now));
+  const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now)).slice(0, maxNew);
   if (need.length) {
-    try { await routesetBatch(need); } catch (e) { routeStats.batchError = String(e.message || e).slice(0, 120); }
-    const rest = need.filter((p) => !fresh(routeCache.get(p.cs), now)).slice(0, maxAdsbdb);
+    routeStats.vrsCalls += need.length;
+    const found = await Promise.all(need.map((p) => lookupVrs(p.cs)));
+    const rest = need.filter((p, i) => !found[i]).slice(0, maxAdsbdb);
     routeStats.adsbdbCalls += rest.length;
     await Promise.all(rest.map((p) => lookupAdsbdb(p.cs)));
   }

@@ -9,7 +9,9 @@ browser (any device)                         Vercel functions (this repo's api/ 
 ────────────────────                         ──────────────────────────────────────────
 every 10 s:  GET /api/planes      ────────▶  adsb.lol, 30 nm around home
                                              (falls back to airplanes.live, then adsb.fi)
-                                             + routes from adsbdb, cached 6 h per callsign
+                                             + routes (adsb.lol route files, adsbdb fallback),
+                                               cached 6 h per callsign, shown only if the
+                                               plane is actually along that route
 every 60 s:  GET /api/military    ────────▶  adsb.lol /v2/mil, kept to 250 nm around home
              ◀──────────────────────────────  compact JSON rows
 draws the map 60× a second, moving each plane
@@ -56,7 +58,7 @@ That writes `dist/claude-dashboard.html`, which Claude publishes as the dashboar
 ## Data and credits
 
 - Flights: [adsb.lol](https://adsb.lol) (ODbL), with [airplanes.live](https://airplanes.live) and [adsb.fi](https://adsb.fi) as fallbacks
-- Routes: [adsbdb](https://www.adsbdb.com)
+- Routes: adsb.lol's route files (from [Virtual Radar Server standing data](https://github.com/vradarserver/standing-data)) and [adsbdb](https://www.adsbdb.com)
 - Map: © OpenStreetMap contributors, via OpenFreeMap vector tiles, baked into `data/map.json`
 
 ## Plane images
