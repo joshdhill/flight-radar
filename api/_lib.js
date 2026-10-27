@@ -128,8 +128,12 @@ async function routesetBatch(planes) {
     signal: AbortSignal.timeout(6000),
   });
   routeStats.batchCalls++;
-  if (!res.ok) { routeStats.batchError = `routeset answered ${res.status}`; return; }
-  const list = await res.json();
+  const text = await res.text();
+  if (!res.ok || !text.trim().startsWith('[')) {
+    routeStats.batchError = `routeset ${res.status} ${res.headers.get('content-type') || ''} ${text.length}b: ${text.trim().slice(0, 80)}`;
+    return;
+  }
+  const list = JSON.parse(text);
   const now = Date.now();
   for (const x of Array.isArray(list) ? list : []) {
     const ap = Array.isArray(x._airports) ? x._airports : [];
