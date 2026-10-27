@@ -2,7 +2,7 @@
 // Files in api/ that start with "_" are not deployed as their own endpoints on Vercel.
 
 export const HOME = { lat: 39.1732, lon: -77.2717 };
-const UA = 'over-germantown/1.0 (personal flight dashboard; github.com/joshdhill/flight-radar)';
+const UA = 'plane-sight/1.0 (personal flight dashboard; github.com/joshdhill/flight-radar)';
 
 // Three free community ADS-B feeds that use the same readsb/"v2" format.
 // adsb.lol is first; the others are only used when it is slow, rate-limited or down.
@@ -81,27 +81,44 @@ export function compactRow(a, route) {
   ];
 }
 
-/* ---------- routes from adsbdb (cached, a few new lookups per request) ---------- */
-const routeCache = new Map(); // callsign -> { at, route }
+/* ---------- routes (cached per callsign, checked against where the plane is) ---------- */
+// A callsign can fly several legs a day, and route databases are sometimes out of date,
+// so a route is only shown when the plane's current position lies along it.
+const routeCache = new Map(); // callsign -> { at, legs: [[codeA, latA, lonA, codeB, latB, lonB], ...] }
 const ROUTE_HIT_MS = 6 * 3600e3, ROUTE_MISS_MS = 3600e3;
 export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
+const R_NM = 3440.065;
+function angDist(lat1, lon1, lat2, lon2) { return distanceNm(lat1, lon1, lat2, lon2) / R_NM; }
+function bearingRad(lat1, lon1, lat2, lon2) {
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  return Math.atan2(y, x);
+}
+// Is (lat, lon) near the great-circle leg from A to B?
+export function onLeg(lat, lon, leg) {
+  const [, aLat, aLon, , bLat, bLon] = leg;
+  if (![aLat, aLon, bLat, bLon].every(Number.isFinite)) return false;
+  if (distanceNm(lat, lon, aLat, aLon) < 60 || distanceNm(lat, lon, bLat, bLon) < 60) return true;
+  const d13 = angDist(aLat, aLon, lat, lon), d12 = angDist(aLat, aLon, bLat, bLon);
+  const delta = bearingRad(aLat, aLon, lat, lon) - bearingRad(aLat, aLon, bLat, bLon);
+  const xt = Math.asin(Math.sin(d13) * Math.sin(delta));
+  const at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xt)))) * (Math.cos(delta) < 0 ? -1 : 1);
+  return Math.abs(xt) * R_NM < 150 && at * R_NM > -60 && at * R_NM < d12 * R_NM + 60;
+}
+function fresh(c, now) { return c && now - c.at < (c.legs.length ? ROUTE_HIT_MS : ROUTE_MISS_MS); }
 
-async function lookupRoute(cs) {
+async function lookupAdsbdb(cs) {
   try {
     const j = await getJson(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, 4000);
-    const f = j.response && j.response.flightroute;
-    const o = f && f.origin, d = f && f.destination;
-    const route = o && d ? `${o.iata_code || o.icao_code}-${d.iata_code || d.icao_code}` : '';
-    routeCache.set(cs, { at: Date.now(), route });
+    const f = j.response && j.response.flightroute, o = f && f.origin, d = f && f.destination;
+    const legs = o && d ? [[o.iata_code || o.icao_code, o.latitude, o.longitude, d.iata_code || d.icao_code, d.latitude, d.longitude]] : [];
+    routeCache.set(cs, { at: Date.now(), legs });
   } catch {
-    routeCache.set(cs, { at: Date.now(), route: '' });
+    routeCache.set(cs, { at: Date.now(), legs: [] });
   }
 }
 
-function fresh(c, now) { return c && now - c.at < (c.route ? ROUTE_HIT_MS : ROUTE_MISS_MS); }
-
 // One batch request to adsb.lol's route service for every airline callsign we don't know yet.
-// It also checks the route is plausible for where the plane is right now.
 async function routesetBatch(planes) {
   const res = await fetch('https://api.adsb.lol/api/0/routeset', {
     method: 'POST',
@@ -113,24 +130,32 @@ async function routesetBatch(planes) {
   const list = await res.json();
   const now = Date.now();
   for (const x of Array.isArray(list) ? list : []) {
-    const codes = (x._airport_codes_iata || '').split('-').filter(Boolean);
-    if (x.airport_codes && x.airport_codes !== 'unknown' && x.plausible !== false && codes.length >= 2) {
-      routeCache.set(x.callsign, { at: now, route: `${codes[0]}-${codes[codes.length - 1]}` });
+    const ap = Array.isArray(x._airports) ? x._airports : [];
+    if (!x.airport_codes || x.airport_codes === 'unknown' || ap.length < 2) continue;
+    const legs = [];
+    for (let i = 0; i + 1 < ap.length; i++) {
+      const a = ap[i], b = ap[i + 1];
+      legs.push([a.iata || a.icao, +a.lat, +a.lon, b.iata || b.icao, +b.lat, +b.lon]);
     }
+    routeCache.set(x.callsign, { at: now, legs });
   }
 }
 
-// planes: [{ cs, lat, lon }] -> { callsign: "IAD-ORD" }
+// planes: [{ cs, lat, lon }] -> { callsign: "IAD-ORD" } for routes that fit the plane's position
 export async function routesFor(planes, maxAdsbdb = 6) {
   const now = Date.now();
   const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now));
   if (need.length) {
     try { await routesetBatch(need); } catch { /* fall through to adsbdb */ }
     const rest = need.filter((p) => !fresh(routeCache.get(p.cs), now)).slice(0, maxAdsbdb);
-    await Promise.all(rest.map((p) => lookupRoute(p.cs)));
+    await Promise.all(rest.map((p) => lookupAdsbdb(p.cs)));
   }
   const out = {};
-  for (const p of planes) { const c = routeCache.get(p.cs); if (c && c.route) out[p.cs] = c.route; }
+  for (const p of planes) {
+    const c = routeCache.get(p.cs);
+    const leg = c && c.legs.find((l) => onLeg(p.lat, p.lon, l));
+    if (leg) out[p.cs] = `${leg[0]}-${leg[3]}`;
+  }
   return out;
 }
 

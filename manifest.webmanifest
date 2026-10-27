@@ -1,6 +1,6 @@
 {
-  "name": "Over Germantown",
-  "short_name": "Over G'town",
+  "name": "Plane Sight",
+  "short_name": "Plane Sight",
   "description": "Live aircraft over Germantown, Maryland, with routes and military tracking.",
   "start_url": "./",
   "scope": "./",

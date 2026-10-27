@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050b08">
-<title>Over Germantown</title>
+<title>Plane Sight</title>
 <meta name="description" content="Live aircraft over Germantown, Maryland, with routes and military tracking.">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Over G'town">
+<meta name="apple-mobile-web-app-title" content="Plane Sight">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500..700&display=swap">
@@ -23,7 +23,7 @@
 <div class="app">
   <header class="top">
     <div class="title">
-      <h1>Over Germantown</h1>
+      <h1>Plane Sight</h1>
       <p id="coords">39.1732°N 77.2717°W</p>
     </div>
     <div class="status">
@@ -37,12 +37,12 @@
       <canvas id="map" role="img" aria-label="Night map centered on home showing aircraft, their routes and trails"></canvas>
     </div>
 
-    <dl class="glass hud-stats" aria-label="Summary">
-      <div class="stat"><dt>In view</dt><dd><span id="stInView">–</span></dd></div>
-      <div class="stat"><dt>Nearest</dt><dd><span id="stNearest">–</span><small>nm</small></dd></div>
-      <div class="stat"><dt>Military</dt><dd><span id="stMil">–</span><small>in 250 nm</small></dd></div>
-      <div class="stat"><dt>Passes today</dt><dd><span id="stPasses">–</span></dd></div>
-    </dl>
+    <div class="glass hud-stats" role="group" aria-label="Summary">
+      <button type="button" class="stat" id="tileInView" title="Tap to step through the planes in view"><span class="k">In view</span><span class="v"><span id="stInView">–</span></span></button>
+      <button type="button" class="stat" id="tileNearest" title="Tap to center on the nearest plane"><span class="k">Nearest</span><span class="v"><span id="stNearest">–</span><small>nm</small></span></button>
+      <button type="button" class="stat" id="tileMil" title="Tap to step through military aircraft"><span class="k">Military</span><span class="v"><span id="stMil">–</span><small>in 250 nm</small></span></button>
+      <button type="button" class="stat" id="tilePasses" title="Tap to see today's passes"><span class="k">Passes today</span><span class="v"><span id="stPasses">–</span></span></button>
+    </div>
 
     <div class="glass hud-ctrl">
       <div class="ctrl-row">
@@ -51,10 +51,11 @@
           <button type="button" data-range="10" aria-pressed="true">10 nm</button>
           <button type="button" data-range="20" aria-pressed="false">20 nm</button>
         </div>
-        <button type="button" class="btn icon-btn" id="btnCenter" aria-label="Recenter on home" title="Recenter on home">
+        <button type="button" class="btn icon-btn" id="btnCenter" aria-label="Recenter on home" title="Recenter on home and stop following">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M7 0v3M7 11v3M0 7h3M11 7h3" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
       </div>
+      <div class="follow" id="followBar" hidden><span id="followText">Following</span><button type="button" class="linkbtn" id="btnStopFollow">Stop</button></div>
       <div class="alt-scale" aria-label="Altitude color scale">
         <div class="bar"></div>
         <div class="ticks"><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k ft</span></div>
@@ -110,14 +111,21 @@
         <ul class="rows" id="milList" hidden></ul>
         <ul class="rows" id="log" hidden></ul>
         <div class="homebar">
-          <span id="homeLabel">Home pin: Germantown</span>
-          <button type="button" class="linkbtn" id="btnHome" aria-expanded="false" aria-controls="homeForm">Move pin</button>
+          <span id="homeLabel">Home: Germantown, MD</span>
+          <button type="button" class="linkbtn" id="btnHome" aria-expanded="false" aria-controls="homeForm">Change home</button>
         </div>
         <form class="home-form" id="homeForm" hidden>
-          <label for="homeLat">Latitude<input id="homeLat" inputmode="decimal" autocomplete="off" value="39.1732"></label>
-          <label for="homeLon">Longitude<input id="homeLon" inputmode="decimal" autocomplete="off" value="-77.2717"></label>
-          <button type="submit" class="btn">Set</button>
-          <p class="foot" id="homeNote" style="grid-column: 1 / -1">Decimal degrees, for example 39.1732 and -77.2717. Saved in this browser only.</p>
+          <div class="home-search" id="homeSearchRow">
+            <label for="homeQuery" class="visually-hidden">Address or place</label>
+            <input id="homeQuery" type="search" autocomplete="street-address" placeholder="Address or place near Germantown">
+            <button type="submit" class="btn">Find</button>
+          </div>
+          <div class="home-actions">
+            <button type="button" class="btn" id="btnHomeCenter">Use map center</button>
+            <button type="button" class="btn" id="btnHomeGps">Use my location</button>
+            <button type="button" class="linkbtn" id="btnHomeReset">Reset</button>
+          </div>
+          <p class="foot" id="homeNote">Drag the map so the crosshair sits on your house, then tap Use map center. Saved in this browser.</p>
         </form>
       </section>
     </aside>

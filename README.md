@@ -1,6 +1,6 @@
-# Over Germantown
+# Plane Sight
 
-A live night map of the aircraft over and around Germantown, Maryland. It shows each flight's route (IAD → ORD), the aircraft type, altitude and speed, how close it will pass to home, and a log of everything that passed within 5 nm. Military aircraft get their own tracking within 250 nm.
+Everything flying over Germantown, Maryland, in plain sight: a live night map of the aircraft around the house. It shows each flight's route (IAD → ORD), the aircraft type, altitude and speed, how close it will pass to home, and a log of everything that passed within 5 nm. Military aircraft get their own tracking within 250 nm.
 
 ## How the live data flows
 

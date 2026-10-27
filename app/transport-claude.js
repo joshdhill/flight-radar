@@ -1,4 +1,4 @@
-/* Over Germantown — Claude dashboard transport.
+/* Plane Sight — Claude dashboard transport.
    A Claude dashboard can't call outside servers, so on the owner's PC it borrows the Claude desktop
    app's built-in browser (the "host:claude_browser" tools) to load adsb.lol and adsbdb pages and read
    them back. Each update is saved to the dashboard's own store, so the same dashboard on a phone, or
@@ -40,7 +40,12 @@
       return C.extractJson(textOf(res));
     }
     function fresh(entry, now) { return entry && now - entry.ts < (entry.r ? ROUTE_HIT : ROUTE_MISS); }
-    function routeCode(cs) { var e = routes[cs]; return e && e.r ? e.r : ''; }
+    function routeCode(cs, lat, lon) {
+      var e = routes[cs];
+      if (!e || !e.r) return '';
+      if (e.o && e.d && !C.onLeg(lat, lon, e.o[0], e.o[1], e.d[0], e.d[1])) return ''; // flight number flying a different leg today
+      return e.r;
+    }
     function saveCaches() {
       if (Date.now() - lastSaveCache < 20000) return;
       lastSaveCache = Date.now();
@@ -64,7 +69,8 @@
           routes[key] = f && f.origin && f.destination ? {
             r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
             f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
-            a: (f.airline && f.airline.name) || '', ts: Date.now() } : { r: '', ts: Date.now() };
+            a: (f.airline && f.airline.name) || '', o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude],
+            ts: Date.now() } : { r: '', ts: Date.now() };
           if (routes[key].r) { var o = {}; o[key] = routes[key]; hub.routes(o); }
         } else {
           var k2 = await load('https://api.adsbdb.com/v0/aircraft/' + key);
@@ -82,7 +88,7 @@
     async function cycle() {
       var h = hub.home(), now = Date.now();
       var j = await load('https://api.adsb.lol/v2/point/' + h.lat.toFixed(4) + '/' + h.lon.toFixed(4) + '/30');
-      var rows = (j.ac || []).map(function (a) { return C.compactRow(a, routeCode((a.flight || '').trim())); }).filter(Boolean);
+      var rows = (j.ac || []).map(function (a) { return C.compactRow(a, routeCode((a.flight || '').trim(), a.lat, a.lon)); }).filter(Boolean);
       nearSnap = { now: j.now || now, ac: rows };
       hub.near(nearSnap); hub.setMode('live', ''); everHost = true;
       rows.map(function (r) { return [C.distanceNm(h.lat, h.lon, r[9], r[10]), r[1]]; }).sort(function (a, b) { return a[0] - b[0]; })
@@ -168,6 +174,20 @@
     }
 
     hub.onStart(function () { hub.setMode('connecting'); hostLoop(); });
+    api.geocode = async function (q) {
+      if (!mcp || !everHost) throw new Error('Address search works when this dashboard is open in the Claude app on your PC.');
+      var list = await loadList('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&bounded=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q));
+      var h = list && list[0];
+      return h ? { lat: +(+h.lat).toFixed(5), lon: +(+h.lon).toFixed(5), name: String(h.display_name || '').split(',').slice(0, 2).join(',').trim() } : null;
+    };
+    // like load(), but for answers that are a JSON list
+    async function loadList(url) {
+      if (!tabId) { await load(url).catch(function () {}); }
+      else await host('navigate', { url: url, tabId: tabId });
+      var res = await host('get_page_text', { tabId: tabId, max_chars: 200000 });
+      var txt = textOf(res), s = txt.indexOf('['), e = txt.lastIndexOf(']');
+      return s >= 0 && e > s ? JSON.parse(txt.slice(s, e + 1)) : [];
+    }
 
     (async function boot() {
       var cl = window.claude;
@@ -186,12 +206,14 @@
     })();
   }
 
-  window.OG_TRANSPORT = {
+  var api = {
     name: 'claude', start: start, lookup: function () {}, photos: false,
+    geocode: function (q) { return Promise.reject(new Error('not ready')); },
     copy: {
       off: ['Live feed is off', 'Open this dashboard in the Claude desktop app on your PC. It pulls live flights through the app’s browser, and your phone picks them up from there.'],
       paused: function (ago) { return ['Live feed paused', 'The last update came from your PC ' + ago + '. Open this dashboard in the Claude desktop app on your PC to resume it.']; },
       needsOk: ['Allow the live feed', 'The Claude app asks before this page uses its browser to load flights. Press Start, then choose Allow.']
     }
   };
+  window.OG_TRANSPORT = api;
 })();

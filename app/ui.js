@@ -1,4 +1,4 @@
-/* Over Germantown — map, feeds and panels. */
+/* Plane Sight — map, feeds and panels. */
 (function () {
   'use strict';
   var C = window.Core, S = window.Sprites, RAD = Math.PI / 180;
@@ -36,10 +36,16 @@
     needsOk: (T.copy && T.copy.needsOk) || ['Allow the live feed', 'Press Start to connect.']
   };
   var routeInfo = {}, acInfo = {};
-  function routeOf(a) { return a.route || (routeInfo[a.call] && routeInfo[a.call].r) || ''; }
+  function routeOf(a) {
+    if (a.route) return a.route;
+    var ri = routeInfo[a.call];
+    if (!ri || !ri.r) return '';
+    if (ri.o && ri.d && typeof a.lat === 'number' && !C.onLeg(a.lat, a.lon, ri.o[0], ri.o[1], ri.d[0], ri.d[1])) return '';
+    return ri.r;
+  }
 
   /* ---------- state ---------- */
-  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', note: '', lastData: 0, lastMil: 0, milOk: false };
+  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', note: '', lastData: 0, lastMil: 0, milOk: false, follow: null, cycleView: -1, cycleMil: -1 };
   var feed = C.createLiveFeed(), tracker = C.createTracker();
   var canvas = $('map'), ctx = canvas.getContext('2d'), W = 0, H = 0, DPR = 1;
   var baseCanvas = document.createElement('canvas'), bctx = baseCanvas.getContext('2d'), baseKey = '';
@@ -308,16 +314,31 @@
     ctx.restore();
   }
 
+  function drawCrosshair() {
+    var c = center();
+    ctx.save(); ctx.strokeStyle = col['fg']; ctx.lineWidth = 1.4; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(c[0], c[1], 9, 0, Math.PI * 2);
+    ctx.moveTo(c[0] - 18, c[1]); ctx.lineTo(c[0] - 5, c[1]); ctx.moveTo(c[0] + 5, c[1]); ctx.lineTo(c[0] + 18, c[1]);
+    ctx.moveTo(c[0], c[1] - 18); ctx.lineTo(c[0], c[1] - 5); ctx.moveTo(c[0], c[1] + 5); ctx.lineTo(c[0], c[1] + 18); ctx.stroke(); ctx.restore();
+  }
+
   /* ---------- panels ---------- */
   function inView() { return feed.list.filter(function (a) { return a.d <= state.range; }).sort(function (a, b) { return a.d - b.d; }); }
   function military() { return feed.list.filter(function (a) { return a.mil && a.d <= MIL_RANGE; }).sort(function (a, b) { return a.d - b.d; }); }
   function findSel() { for (var i = 0; i < feed.list.length; i++) if (feed.list[i].id === state.selId) return feed.list[i]; return null; }
-  function select(id, pan) {
+  // center: keep this plane in the middle of the map as it moves
+  function select(id, center) {
     state.selId = id; state.auto = false;
     var a = findSel();
-    if (pan && a && a.d > state.range) { state.panX = a.x; state.panY = a.y; state.range = Math.min(22, Math.max(state.range, 10)); syncRangeSeg(); }
+    if (center && a) { follow(a); }
+    else if (state.follow && state.follow !== id) stopFollow();
     renderPanels();
   }
+  function follow(a) {
+    state.follow = a.id; state.panX = a.x; state.panY = a.y;
+    $('followBar').hidden = false; text('followText', 'Following ' + a.call);
+  }
+  function stopFollow() { state.follow = null; $('followBar').hidden = true; }
   function hhmm(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   function ago(ms) { var s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? s + 's ago' : s < 3600 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago'; }
   function startOfDay() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
@@ -376,7 +397,8 @@
     if (lastLookup !== ac.id) { lastLookup = ac.id; T.lookup(ac, hub); }
     var ri = routeInfo[ac.call], ai = acInfo[ac.id];
     text('selRoute', C.routeText(routeOf(ac)));
-    text('selRouteMore', ri ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner ? ai.owner : ''));
+    var shownRoute = routeOf(ac), riOk = ri && ri.r === shownRoute;
+    text('selRouteMore', riOk ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner ? ai.owner : ''));
     text('selType', [ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
     text('selNote', ac.mil ? [C.callsignNote(ac.call), ri ? (ai && ai.owner) || '' : '', C.MIL_LABEL[ac.mil] || ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
     var ph = $('selPhoto'), photo = T.photos && ai && ai.photo;
@@ -469,7 +491,7 @@
       alerted[a.id] = now;
       var msg = 'Military nearby: ' + a.call + (a.typeName && a.typeName !== 'Unknown type' ? ' (' + a.typeName + ')' : '') + ', ' + a.d.toFixed(1) + ' nm ' + C.card8(a.brg) + ', ' + C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '');
       toast(msg);
-      if (alertsOn && 'Notification' in window && Notification.permission === 'granted') { try { new Notification('Over Germantown', { body: msg, tag: 'mil-' + a.id }); } catch (e) {} }
+      if (alertsOn && 'Notification' in window && Notification.permission === 'granted') { try { new Notification('Plane Sight', { body: msg, tag: 'mil-' + a.id }); } catch (e) {} }
     });
   }
   $('toast').addEventListener('click', function () { this.hidden = true; });
@@ -490,7 +512,23 @@
     text('listTitle', v === 'now' ? 'In view' : v === 'mil' ? 'Military within ' + MIL_RANGE + ' nm' : 'Passes within ' + C.PASS_NM + ' nm');
     renderPanels();
   });
-  $('btnCenter').addEventListener('click', function () { state.panX = 0; state.panY = 0; });
+  $('btnCenter').addEventListener('click', function () { stopFollow(); state.panX = 0; state.panY = 0; });
+  $('btnStopFollow').addEventListener('click', function () { stopFollow(); });
+  // Summary tiles: step through planes in view, center on the nearest, step through military, open passes.
+  $('tileInView').addEventListener('click', function () {
+    var rows = inView(); if (!rows.length) return;
+    state.cycleView = (state.cycleView + 1) % rows.length; select(rows[state.cycleView].id);
+  });
+  $('tileNearest').addEventListener('click', function () {
+    var rows = inView(); if (!rows.length) return;
+    state.cycleView = 0; select(rows[0].id, true);
+  });
+  $('tileMil').addEventListener('click', function () {
+    var rows = military(); if (!rows.length) return;
+    state.cycleMil = (state.cycleMil + 1) % rows.length; select(rows[state.cycleMil].id, true);
+    if (state.tab !== 'mil') $('tabSeg').querySelector('button[data-tab="mil"]').click();
+  });
+  $('tilePasses').addEventListener('click', function () { $('tabSeg').querySelector('button[data-tab="passes"]').click(); });
   canvas.addEventListener('wheel', function (e) {
     e.preventDefault();
     var r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k0 = scale(), c = center();
@@ -509,6 +547,7 @@
     if (!drag) return;
     var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (!dragged && Math.hypot(dx, dy) < 4) return;
+    if (!dragged) stopFollow();
     dragged = true; canvas.classList.add('dragging');
     var k = scale(); state.panX = drag.px - dx / k; state.panY = drag.py + dy / k;
   });
@@ -521,23 +560,55 @@
     if (best) select(best.id); else { state.auto = true; renderPanels(); }
   });
 
-  function applyHome(la, lo) {
-    C.setHome(la, lo); tracker.reset(feed.list);
+  var DEFAULT_HOME = { lat: 39.1732, lon: -77.2717, name: 'Germantown, MD' };
+  function inMapArea(la, lo) { return isFinite(la) && isFinite(lo) && Math.abs(la - 39.17) <= 0.35 && Math.abs(lo + 77.27) <= 0.45; }
+  function applyHome(la, lo, name) {
+    C.setHome(la, lo); tracker.reset(feed.list); stopFollow(); state.panX = 0; state.panY = 0;
     text('coords', la.toFixed(4) + '°N ' + Math.abs(lo).toFixed(4) + '°W');
-    text('homeLabel', Math.abs(la - 39.1732) < 1e-4 && Math.abs(lo + 77.2717) < 1e-4 ? 'Home pin: Germantown' : 'Home pin: ' + la.toFixed(4) + ', ' + lo.toFixed(4));
-    $('homeLat').value = la; $('homeLon').value = lo; baseKey = '';
+    text('homeLabel', 'Home: ' + (name || la.toFixed(4) + ', ' + lo.toFixed(4)));
+    baseKey = '';
   }
-  $('btnHome').addEventListener('click', function () { var f = $('homeForm'); f.hidden = !f.hidden; this.setAttribute('aria-expanded', String(!f.hidden)); });
+  function saveHome(la, lo, name) {
+    if (!inMapArea(la, lo)) { text('homeNote', 'That spot is outside the map, which covers about 25 miles around Germantown.'); return false; }
+    applyHome(la, lo, name); lsSet('og-home', JSON.stringify([la, lo, name || '']));
+    text('homeNote', 'Home moved. It’s saved in this browser.');
+    closeHome(); return true;
+  }
+  function closeHome() { $('homeForm').hidden = true; $('btnHome').setAttribute('aria-expanded', 'false'); }
+  var canSearch = typeof T.geocode === 'function', canGps = T.name === 'web' && 'geolocation' in navigator;
+  $('homeSearchRow').hidden = !canSearch; $('btnHomeGps').hidden = !canGps;
+  $('btnHome').addEventListener('click', function () {
+    var f = $('homeForm'); f.hidden = !f.hidden; this.setAttribute('aria-expanded', String(!f.hidden));
+    if (!f.hidden && canSearch) $('homeQuery').focus();
+  });
   $('homeForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    var la = parseFloat($('homeLat').value), lo = parseFloat($('homeLon').value);
-    if (!isFinite(la) || !isFinite(lo) || Math.abs(la - 39.17) > 0.35 || Math.abs(lo + 77.27) > 0.45) {
-      text('homeNote', 'That point is outside the map. Use decimal degrees near Germantown, for example 39.1732 and -77.2717.'); return;
-    }
-    applyHome(la, lo); lsSet('og-home', JSON.stringify([la, lo]));
-    text('homeNote', 'Home pin moved.'); $('homeForm').hidden = true; $('btnHome').setAttribute('aria-expanded', 'false');
+    var q = $('homeQuery').value.trim(); if (!q || !canSearch) return;
+    text('homeNote', 'Looking up “' + q + '”…');
+    T.geocode(q).then(function (hit) {
+      if (!hit) { text('homeNote', 'No match near Germantown. Try a street address with the town name.'); return; }
+      saveHome(hit.lat, hit.lon, hit.name);
+    }).catch(function (err) { text('homeNote', err && /Claude app/.test(err.message || '') ? err.message : 'The address lookup didn’t answer. Try again, or use the map center.'); });
   });
-  try { var savedHome = JSON.parse(lsGet('og-home') || 'null'); if (savedHome && savedHome.length === 2) applyHome(savedHome[0], savedHome[1]); } catch (e) {}
+  $('btnHomeCenter').addEventListener('click', function () {
+    var h = C.getHome(), cosl = Math.cos(h.lat * RAD);
+    var la = h.lat + state.panY / 60, lo = h.lon + state.panX / (60 * cosl);
+    saveHome(+la.toFixed(5), +lo.toFixed(5), '');
+  });
+  $('btnHomeGps').addEventListener('click', function () {
+    text('homeNote', 'Asking for your location…');
+    navigator.geolocation.getCurrentPosition(function (p) { saveHome(+p.coords.latitude.toFixed(5), +p.coords.longitude.toFixed(5), 'my location'); },
+      function () { text('homeNote', 'Location wasn’t shared. Use the search or the map center instead.'); }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+  $('btnHomeReset').addEventListener('click', function () {
+    applyHome(DEFAULT_HOME.lat, DEFAULT_HOME.lon, DEFAULT_HOME.name);
+    try { localStorage.removeItem('og-home'); } catch (e) {}
+    text('homeNote', 'Home reset to Germantown.'); closeHome();
+  });
+  try {
+    var savedHome = JSON.parse(lsGet('og-home') || 'null');
+    if (savedHome && savedHome.length >= 2 && inMapArea(savedHome[0], savedHome[1])) applyHome(savedHome[0], savedHome[1], savedHome[2] || '');
+  } catch (e) {}
 
   /* ---------- feeds (the transport decides where data comes from) ---------- */
   var lastSave = 0, lastLookup = null, startHandler = null;
@@ -578,7 +649,12 @@
     removed.forEach(function (ac) { tracker.record(ac); });
     if (state.mode === 'live' && state.lastData && Date.now() - state.lastData > 90000) { state.mode = 'paused'; }
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); }
+    if (state.follow) {
+      var fa = null; for (var i = 0; i < feed.list.length; i++) if (feed.list[i].id === state.follow) { fa = feed.list[i]; break; }
+      if (!fa) stopFollow();
+      else if (Math.hypot(fa.x - state.panX, fa.y - state.panY) > state.range * 0.03) { state.panX = fa.x; state.panY = fa.y; }
+    }
+    if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); if (!$('homeForm').hidden) drawCrosshair(); }
     if (t - lastPanel > 800) { lastPanel = t; renderPanels(); checkAlerts(); }
     requestAnimationFrame(frame);
   }

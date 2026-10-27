@@ -1,7 +1,7 @@
 {
   "name": "flight-radar",
   "private": true,
-  "description": "Over Germantown: live aircraft over Germantown, MD, with routes and military tracking.",
+  "description": "Plane Sight: live aircraft over Germantown, MD, with routes and military tracking.",
   "type": "module",
   "engines": { "node": ">=20" }
 }

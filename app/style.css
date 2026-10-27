@@ -1,4 +1,4 @@
-/* Over Germantown. Layout: the night map is the page; glass panels float on it (stacked under it on phones). */
+/* Plane Sight. Layout: the night map is the page; glass panels float on it (stacked under it on phones). */
 :root {
   /* Night forest: green-black ground, glass panels tinted the same way. Aircraft carry the color. */
   --bg: #050b08;
@@ -77,11 +77,14 @@ button { font: inherit; color: inherit; }
 #map.dragging { cursor: grabbing; }
 .glass { background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.1); backdrop-filter: blur(14px) saturate(1.1); border: 1px solid var(--line); border-radius: 14px; }
 .hud-stats { position: absolute; top: 14px; left: 14px; z-index: 2; display: flex; padding: 10px 6px; margin: 0; }
-.stat { padding: 0 14px; min-width: 0; }
-.stat + .stat { border-left: 1px solid var(--line); }
-.stat dt { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-faint); }
-.stat dd { margin: 3px 0 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.1; }
-.stat dd small { font-family: var(--font-body); font-weight: 400; font-size: 11px; color: var(--fg-muted); margin-left: 3px; letter-spacing: 0; }
+.stat { padding: 2px 14px; min-width: 0; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 8px; display: flex; flex-direction: column; }
+.stat + .stat { border-left: 1px solid var(--line); border-radius: 0; }
+.stat:hover .k { color: var(--fg-muted); }
+.stat:hover .v { color: #fff; }
+.stat:active { transform: translateY(1px); }
+.stat .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-faint); }
+.stat .v { margin: 3px 0 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.1; color: var(--fg); }
+.stat .v small { font-family: var(--font-body); font-weight: 400; font-size: 11px; color: var(--fg-muted); margin-left: 3px; letter-spacing: 0; }
 .hud-ctrl { position: absolute; left: 14px; bottom: 14px; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
 .ctrl-row { display: flex; gap: 8px; align-items: center; }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 9px; overflow: hidden; }
@@ -142,9 +145,13 @@ button { font: inherit; color: inherit; }
 .homebar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-faint); }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--fg-muted); cursor: pointer; font-size: 11.5px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
 .linkbtn:hover { color: var(--fg); }
-.home-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-top: 10px; align-items: end; }
-.home-form label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-faint); }
-.home-form input { min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: rgba(235, 242, 250, 0.04); color: var(--fg); font-family: var(--font-mono); font-size: 12px; }
+.home-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.home-search { display: flex; gap: 8px; }
+.home-search input { flex: 1 1 auto; min-width: 0; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: rgba(235, 248, 240, 0.05); color: var(--fg); font: inherit; font-size: 12.5px; }
+.home-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.follow { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--fg-muted); }
+.follow span { font-family: var(--font-mono); color: var(--fg); }
 .foot { font-size: 11px; color: var(--fg-faint); margin: 6px 0 0; }
 
 @media (max-width: 1000px) {
@@ -156,8 +163,8 @@ button { font: inherit; color: inherit; }
   .overlay .rows { max-height: 360px; }
 }
 @media (max-width: 520px) {
-  .stat { padding: 0 10px; }
-  .stat dd { font-size: 19px; }
+  .stat { padding: 2px 10px; }
+  .stat .v { font-size: 19px; }
   .sel-call { font-size: 26px; }
   .alt-scale { width: 100%; }
 }

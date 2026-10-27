@@ -1,4 +1,4 @@
-/* Over Germantown — core logic (no DOM): geometry, live feed, tracking, aircraft classes. */
+/* Plane Sight — core logic (no DOM): geometry, live feed, tracking, aircraft classes. */
 (function (root) {
   'use strict';
   var RAD = Math.PI / 180, NM = 60;
@@ -237,10 +237,28 @@
   }
   function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
 
+  /* ---------- route sanity check (same rule as api/_lib.js) ---------- */
+  function bearingRad(lat1, lon1, lat2, lon2) {
+    var y = Math.sin((lon2 - lon1) * RAD) * Math.cos(lat2 * RAD);
+    var x = Math.cos(lat1 * RAD) * Math.sin(lat2 * RAD) - Math.sin(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.cos((lon2 - lon1) * RAD);
+    return Math.atan2(y, x);
+  }
+  // Is (lat, lon) near the great-circle leg from (aLat, aLon) to (bLat, bLon)?
+  function onLeg(lat, lon, aLat, aLon, bLat, bLon) {
+    if (![aLat, aLon, bLat, bLon].every(function (v) { return typeof v === 'number' && isFinite(v); })) return true; // no coordinates: can't check
+    var R = 3440.065;
+    if (distanceNm(lat, lon, aLat, aLon) < 60 || distanceNm(lat, lon, bLat, bLon) < 60) return true;
+    var d13 = distanceNm(aLat, aLon, lat, lon) / R, d12 = distanceNm(aLat, aLon, bLat, bLon) / R;
+    var delta = bearingRad(aLat, aLon, lat, lon) - bearingRad(aLat, aLon, bLat, bLon);
+    var xt = Math.asin(Math.sin(d13) * Math.sin(delta));
+    var at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xt)))) * (Math.cos(delta) < 0 ? -1 : 1);
+    return Math.abs(xt) * R < 150 && at * R > -60 && at * R < d12 * R + 60;
+  }
+
   root.Core = {
     setHome: setHome, getHome: getHome, toXY: toXY, bearingOf: bearingOf, PASS_NM: PASS_NM, MIL_LABEL: MIL_LABEL,
     createLiveFeed: createLiveFeed, createTracker: createTracker, classOf: classOf, cpa: cpa, altStop: altStop,
     fmtAlt: fmtAlt, fmtDur: fmtDur, card8: card8, routeText: routeText, shortType: shortType, TYPES: TYPES,
-    militaryFlag: militaryFlag, callsignNote: callsignNote, distanceNm: distanceNm, compactRow: compactRow, extractJson: extractJson, looksLikeAirline: looksLikeAirline
+    militaryFlag: militaryFlag, callsignNote: callsignNote, distanceNm: distanceNm, compactRow: compactRow, extractJson: extractJson, looksLikeAirline: looksLikeAirline, onLeg: onLeg
   };
 })(typeof window !== 'undefined' ? window : globalThis);

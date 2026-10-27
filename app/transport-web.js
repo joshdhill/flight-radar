@@ -1,4 +1,4 @@
-/* Over Germantown — website transport.
+/* Plane Sight — website transport.
    Gets aircraft from this site's own /api functions, and looks up route and airframe details
    straight from adsbdb (which allows calls from web pages). */
 (function () {
@@ -52,7 +52,8 @@
           var info = {}; info[ac.call] = {
             r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
             f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
-            a: (f.airline && f.airline.name) || ''
+            a: (f.airline && f.airline.name) || '',
+            o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude]
           };
           hub.routes(info);
         }).catch(function () {});
@@ -69,5 +70,17 @@
     }
   }
 
-  window.OG_TRANSPORT = { name: 'web', start: start, lookup: lookup, photos: true };
+  // Address search for the home location, limited to the area the map covers.
+  function geocode(q) {
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&bounded=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q);
+    return fetch(url, { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (list) {
+        var h = list && list[0];
+        if (!h) return null;
+        return { lat: +(+h.lat).toFixed(5), lon: +(+h.lon).toFixed(5), name: String(h.display_name || '').split(',').slice(0, 2).join(',').trim() };
+      });
+  }
+
+  window.OG_TRANSPORT = { name: 'web', start: start, lookup: lookup, geocode: geocode, photos: true };
 })();

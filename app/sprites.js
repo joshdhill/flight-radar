@@ -1,4 +1,4 @@
-/* Over Germantown — aircraft sprites.
+/* Plane Sight — aircraft sprites.
    Built-in sprites are small top-down vector drawings, nose up, one per aircraft class.
    Drop a PNG named after a class into /sprites (for example sprites/narrow.png) and it replaces the drawing.
    See sprites/README.md for the image spec. */
