@@ -11,7 +11,8 @@
     tileUrl = (j.tiles && j.tiles[0]) || null; notify();
   }).catch(function () {});
 
-  function notify() { listeners.forEach(function (f) { try { f(); } catch (e) {} }); }
+  var version = 0;
+  function notify() { version++; listeners.forEach(function (f) { try { f(); } catch (e) {} }); }
 
   /* ---------- Mapbox vector tile decoding ---------- */
   function decodeTile(buf) {
@@ -174,6 +175,7 @@
   window.OG_TILES = {
     layersFor: layersFor,
     onUpdate: function (fn) { listeners.push(fn); },
+    version: function () { return version; },
     ready: function () { return !!tileUrl; }
   };
 })();

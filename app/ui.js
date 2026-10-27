@@ -694,7 +694,7 @@
   T.start(hub);
 
   /* ---------- loop ---------- */
-  var lastPanel = 0;
+  var lastPanel = 0, tileVersion = -1, lastTileDraw = 0;
   function frame(t) {
     var removed = feed.step();
     tracker.update(feed.list, Date.now());
@@ -706,6 +706,7 @@
       if (!fa) stopFollow();
       else if (Math.hypot(fa.x - state.panX, fa.y - state.panY) > state.range * 0.03) { state.panX = fa.x; state.panY = fa.y; }
     }
+    if (window.OG_TILES) { var tv = window.OG_TILES.version(); if (tv !== tileVersion && t - lastTileDraw > 250) { tileVersion = tv; lastTileDraw = t; baseKey = ''; } }
     if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); if (!$('homeForm').hidden) drawCrosshair(); }
     if (t - lastPanel > 800) { lastPanel = t; renderPanels(); checkAlerts(); }
     requestAnimationFrame(frame);
