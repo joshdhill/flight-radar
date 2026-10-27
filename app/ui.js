@@ -262,9 +262,11 @@
       ac.vis = q[0] > -30 && q[1] > -30 && q[0] < W - ow + 30 && q[1] < H + 30;
       if (ac.id === state.selId) sel = ac;
     }
+    var wideView = state.range > 40; // zoomed far out: military and the selected plane stand out, the rest become small marks
     for (i = 0; i < list.length; i++) {
       ac = list[i]; var tr = ac.trail, n = tr.length; if (n < 2 || !ac.vis) continue;
       var isSel = ac === sel;
+      if (wideView && !isSel && !ac.mil) continue;
       for (j = 1; j < n; j++) {
         var a = proj(tr[j - 1].lat, tr[j - 1].lon), b = proj(tr[j].lat, tr[j].lon);
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
@@ -291,7 +293,8 @@
         ctx.beginPath(); ctx.arc(x.px, x.py, 14 + pr * 10, 0, Math.PI * 2); ctx.strokeStyle = col['danger']; ctx.globalAlpha = 1 - pr * 0.8; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1;
       }
       if (x === sel) { ctx.beginPath(); ctx.arc(x.px, x.py, 23, 0, Math.PI * 2); ctx.strokeStyle = col["fg"]; ctx.lineWidth = 1.3; ctx.stroke(); }
-      S.draw(ctx, { cls: x.cls, type: x.type, x: x.px, y: x.py, track: x.trk, fill: altColor(x.alt), outline: col['land'], scale: x === sel ? 1.12 : 1, time: reduced ? 0 : t });
+      var small = wideView && x !== sel && !x.mil;
+      S.draw(ctx, { cls: x.cls, type: x.type, x: x.px, y: x.py, track: x.trk, fill: altColor(x.alt, small ? 0.75 : 1), outline: col['land'], scale: x === sel ? 1.12 : small ? 0.42 : wideView ? 0.8 : 1, time: reduced ? 0 : t });
       if (x.mil) brackets(x.px, x.py, 20, col["mil"]);
     });
     // labels: route (or callsign) as the headline, type and altitude underneath, without overlaps
@@ -300,7 +303,7 @@
     var F_SUB = '10.5px "B612", system-ui, sans-serif', F_ALT = '10px "B612 Mono", ui-monospace, monospace';
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     order.forEach(function (x) {
-      if (x !== sel && !x.mil && x.d > state.range * 1.25) return;
+      if (x !== sel && !x.mil && (wideView || x.d > state.range * 1.25)) return;
       var L = labelFor(x), alt = C.fmtAlt(x.alt), sub = L.sub ? L.sub + '  ' : '';
       var ftop = L.strong ? F_TOP : F_TOP2;
       ctx.font = ftop; var w1 = ctx.measureText(L.top).width + (L.chip ? 30 : 0);
