@@ -1,0 +1,64 @@
+# Over Germantown
+
+A live night map of the aircraft over and around Germantown, Maryland. It shows each flight's route (IAD → ORD), the aircraft type, altitude and speed, how close it will pass to home, and a log of everything that passed within 5 nm. Military aircraft get their own tracking within 250 nm.
+
+## How the live data flows
+
+```
+browser (any device)                         Vercel functions (this repo's api/ folder)
+────────────────────                         ──────────────────────────────────────────
+every 10 s:  GET /api/planes      ────────▶  adsb.lol, 30 nm around home
+                                             (falls back to airplanes.live, then adsb.fi)
+                                             + routes from adsbdb, cached 6 h per callsign
+every 60 s:  GET /api/military    ────────▶  adsb.lol /v2/mil, kept to 250 nm around home
+             ◀──────────────────────────────  compact JSON rows
+draws the map 60× a second, moving each plane
+forward along its heading and speed between updates
+```
+
+The flight feeds don't allow web pages to call them directly, so the two small functions in `api/` fetch for the page. Each response is cached for a few seconds, so several screens share one upstream request.
+
+## Put it online (free, about 5 minutes)
+
+1. Go to **vercel.com** and sign up with your GitHub account.
+2. Click **Add New… → Project**, find **flight-radar** and click **Import**.
+3. Leave every setting as it is and click **Deploy**.
+
+Vercel gives you an address like `flight-radar-joshdhill.vercel.app`. Every push to `main` redeploys automatically. Anyone with the address can open the page; the home pin it centers on is Germantown in general, and a pin you move is saved only in your own browser.
+
+## Military tracking
+
+What the page does:
+
+- **Detection** uses three signals: the military flag in the aircraft database that adsb.lol publishes, the US military block of transponder addresses (AE0000–AFFFFF), and well-known military callsigns (RCH, SAM, PAT, CNV and others). The selected aircraft's card says which signal matched.
+- **The Military tab** lists every military aircraft broadcasting within 250 nm, nearest first. Tap one to jump the map to it.
+- **Map edge arrows** point to military aircraft outside the current view, with their distance.
+- **Alerts:** the Military tab's "Alert me" switch sends a browser notification when a military aircraft comes within 15 nm of home. An on-page banner shows either way.
+- **Emergency squawks** (7500, 7600, 7700) get a pulsing red ring and a badge.
+
+What no public feed can show: aircraft with their transponders off, and many fighters on training flights. Aircraft that send only Mode S (no position) appear when enough receivers hear them to compute a position by multilateration ("MLAT position" on the card).
+
+## Data and credits
+
+- Flights: [adsb.lol](https://adsb.lol) (ODbL), with [airplanes.live](https://airplanes.live) and [adsb.fi](https://adsb.fi) as fallbacks
+- Routes: [adsbdb](https://www.adsbdb.com)
+- Map: © OpenStreetMap contributors, via OpenFreeMap vector tiles, baked into `data/map.json`
+
+## Plane images
+
+See [`sprites/README.md`](sprites/README.md) to swap the built-in plane drawings for your own images.
+
+## Files
+
+```
+index.html          the page
+app/style.css       look and layout
+app/core.js         flight math: positions, closest approach, passes, aircraft classes
+app/sprites.js      plane drawings and image overrides
+app/ui.js           map drawing, feeds, panels
+api/planes.js       live aircraft near home
+api/military.js     military aircraft within 250 nm
+api/_lib.js         shared fetch, fallback, military detection, routes
+data/map.json       roads, water, woods and town names around Germantown
+sprites/            optional plane images
+```
