@@ -173,3 +173,9 @@ button { font: inherit; color: inherit; }
 .toast { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); top: calc(14px + env(safe-area-inset-top, 0px)); max-width: min(560px, calc(100vw - 32px));
   padding: 10px 14px; border-radius: 12px; background: var(--glass-solid); border: 1px solid var(--mil); color: var(--fg); font-size: 13px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
 .toast::before { content: "MIL"; font-family: var(--font-mono); font-weight: 700; font-size: 10px; background: var(--mil); color: var(--bg); padding: 2px 5px; border-radius: 3px; margin-right: 8px; }
+.sel-note { margin: 6px 0 0; font-size: 11.5px; color: var(--mil); }
+.sel-note:empty { display: none; }
+.sel-photo { margin: 14px 0 0; position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--glass-solid); }
+.sel-photo img { display: block; width: 100%; max-width: 100%; height: 120px; object-fit: cover; }
+.sel-photo figcaption { position: absolute; right: 6px; bottom: 5px; font-size: 9.5px; color: #fff; background: rgba(0,0,0,0.5); padding: 1px 5px; border-radius: 4px; }
+html:not(.embedded) body { padding-top: calc(18px + env(safe-area-inset-top, 0px)); padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }

@@ -84,7 +84,7 @@ export function compactRow(a, route) {
 /* ---------- routes from adsbdb (cached, a few new lookups per request) ---------- */
 const routeCache = new Map(); // callsign -> { at, route }
 const ROUTE_HIT_MS = 6 * 3600e3, ROUTE_MISS_MS = 3600e3;
-export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || ''); }
+export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
 
 async function lookupRoute(cs) {
   try {

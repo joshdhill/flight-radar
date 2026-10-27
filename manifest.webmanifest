@@ -1,0 +1,15 @@
+{
+  "name": "Over Germantown",
+  "short_name": "Over G'town",
+  "description": "Live aircraft over Germantown, Maryland, with routes and military tracking.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#050b08",
+  "theme_color": "#050b08",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

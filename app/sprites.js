@@ -4,8 +4,8 @@
    See sprites/README.md for the image spec. */
 (function (root) {
   'use strict';
-  var CLASSES = ['wide', 'narrow', 'regional', 'bizjet', 'prop', 'heli', 'fighter', 'miltransport', 'tiltrotor'];
-  var SIZE = { wide: 18, narrow: 15, regional: 13.5, bizjet: 12, prop: 11.5, heli: 12, fighter: 13, miltransport: 18, tiltrotor: 14 };
+  var CLASSES = ['wide', 'narrow', 'regional', 'bizjet', 'prop', 'heli', 'fighter', 'miltransport', 'tiltrotor', 'drone'];
+  var SIZE = { wide: 18, narrow: 15, regional: 13.5, bizjet: 12, prop: 11.5, heli: 12, fighter: 13, miltransport: 18, tiltrotor: 14, drone: 15 };
   var images = {};
 
   // manifest: { "classes": ["narrow", ...], "types": ["B738", ...] } from sprites/manifest.json
@@ -80,6 +80,11 @@
       wingPair(c, [[0.12, -0.24], [1.0, 0.02], [1.0, 0.14], [0.12, 0.1]]);
       wingPair(c, [[0.06, 0.84], [0.46, 0.92], [0.46, 1.0], [0.06, 0.98]]);
       [[0.36, -0.12], [0.67, -0.04]].forEach(function (e) { ellipse(c, e[0], e[1], 0.055, 0.13); ellipse(c, -e[0], e[1], 0.055, 0.13); });
+    },
+    drone: function (c) {
+      mirror(c, [[0, -0.95], [0.08, -0.8], [0.09, -0.3], [0.06, 0.6], [0.03, 0.9]]);
+      c.moveTo(-1.05, -0.12); c.lineTo(1.05, -0.12); c.lineTo(1.05, -0.04); c.lineTo(-1.05, -0.04); c.closePath();
+      wingPair(c, [[0.04, 0.72], [0.34, 0.98], [0.3, 1.02], [0.03, 0.82]]);
     },
     tiltrotor: function (c) {
       capsule(c, 0.12, -0.95, 0.92);

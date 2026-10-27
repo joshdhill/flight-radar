@@ -19,16 +19,27 @@
       pts.b = b; return pts;
     });
   }
-  fetch('data/map.json').then(function (r) { return r.json(); }).then(function (raw) {
+  function useMap(raw) {
     ['wood', 'park', 'water', 'river', 'stream', 'major', 'primary', 'secondary'].forEach(function (k) { OSM[k] = decodeSet(raw[k]); });
     OSM.places = raw.places || []; OSM.shields = raw.shields || []; baseKey = '';
-  }).catch(function () {});
+  }
+  var inlineMap = document.getElementById('mapdata');
+  if (inlineMap) { try { useMap(JSON.parse(inlineMap.textContent)); } catch (e) {} }
+  else fetch('data/map.json').then(function (r) { return r.json(); }).then(useMap).catch(function () {});
   var AIRPORTS = [['IAD', 38.9445, -77.4558], ['DCA', 38.8521, -77.0377], ['BWI', 39.1754, -76.6683], ['GAI', 39.1684, -77.1660],
     ['FDK', 39.4176, -77.3743], ['JYO', 39.0777, -77.5570], ['ADW', 38.8108, -76.8669], ['DAA', 38.7150, -77.1810]];
-  fetch('sprites/manifest.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (list) { S.loadOverrides('sprites/', list); }).catch(function () {});
+  if (!window.OG_EMBEDDED) fetch('sprites/manifest.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (list) { S.loadOverrides('sprites/', list); }).catch(function () {});
+  var T = window.OG_TRANSPORT || { start: function () {}, lookup: function () {}, copy: {} };
+  var COPY = {
+    off: (T.copy && T.copy.off) || ['Can\u2019t reach the flight feed', 'None of the flight feeds answered yet. This page keeps retrying on its own, usually within a minute.'],
+    paused: (T.copy && T.copy.paused) || function (ago) { return ['Flight feed is slow', 'The last update arrived ' + ago + '. This page keeps retrying on its own.']; },
+    needsOk: (T.copy && T.copy.needsOk) || ['Allow the live feed', 'Press Start to connect.']
+  };
+  var routeInfo = {}, acInfo = {};
+  function routeOf(a) { return a.route || (routeInfo[a.call] && routeInfo[a.call].r) || ''; }
 
   /* ---------- state ---------- */
-  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', lastData: 0, lastMil: 0, milOk: false };
+  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', note: '', lastData: 0, lastMil: 0, milOk: false };
   var feed = C.createLiveFeed(), tracker = C.createTracker();
   var canvas = $('map'), ctx = canvas.getContext('2d'), W = 0, H = 0, DPR = 1;
   var baseCanvas = document.createElement('canvas'), bctx = baseCanvas.getContext('2d'), baseKey = '';
@@ -185,7 +196,8 @@
   }
   function labelFor(a) {
     if (a.mil) return { top: a.call, chip: 'MIL' };
-    if (a.route) return { top: C.routeText(a.route), chip: '' };
+    var rt = routeOf(a);
+    if (rt) return { top: C.routeText(rt), chip: '' };
     return { top: a.call, chip: '' };
   }
   function drawTraffic(t) {
@@ -310,19 +322,21 @@
     t.textContent = '';
     if (m === 'live') {
       var b = document.createElement('b'); b.textContent = 'Live';
-      t.append(b, ' · ' + feed.list.filter(function (a) { return a.source === 'near'; }).length + ' aircraft · ' + ago(state.lastData));
-    } else if (m === 'paused') t.textContent = 'Feed slow · last ' + ago(state.lastData);
-    else if (m === 'off') t.textContent = 'Feed not answering';
+      t.append(b, ' · ' + feed.list.filter(function (a) { return a.source === 'near'; }).length + ' aircraft · ' + ago(state.lastData) + (state.note ? ' · ' + state.note : ''));
+    } else if (m === 'paused') t.textContent = 'Feed paused · last ' + (state.lastData ? ago(state.lastData) : 'update a while ago');
+    else if (m === 'off') t.textContent = 'Feed off';
+    else if (m === 'needs-ok') t.textContent = 'Live feed needs your OK';
     else t.textContent = 'Connecting';
     text('clock', new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
   }
-  function offlineShown() { return (state.mode === 'off' || state.mode === 'paused') && !feed.list.length; }
+  function offlineShown() { return (state.mode === 'off' || state.mode === 'paused' || state.mode === 'needs-ok') && !feed.list.length; }
   function renderOffline() {
     var show = offlineShown();
     $('offline').hidden = !show; $('selLive').hidden = show;
     if (!show) return;
-    if (state.mode === 'paused') { text('offTitle', 'Flight feed is slow'); text('offText', 'The last update arrived ' + ago(state.lastData) + '. This page keeps retrying on its own.'); }
-    else { text('offTitle', 'Can’t reach the flight feed'); text('offText', 'None of the flight feeds answered yet. This page keeps retrying on its own, usually within a minute.'); }
+    var c = state.mode === 'needs-ok' ? COPY.needsOk : state.mode === 'paused' ? COPY.paused(state.lastData ? ago(state.lastData) : 'a while ago') : COPY.off;
+    text('offTitle', c[0]); text('offText', c[1]);
+    $('btnStart').hidden = state.mode !== 'needs-ok';
   }
   function renderStats() {
     var rows = inView(), today = startOfDay(), mil = military();
@@ -333,22 +347,6 @@
     text('milCount', state.milOk ? String(mil.length) : '');
   }
 
-  var routeInfo = {};
-  function routeDetails(call) {
-    if (!/^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(call || '')) return null;
-    if (routeInfo[call] !== undefined) return routeInfo[call];
-    routeInfo[call] = null;
-    fetch('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(call))
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        var f = j && j.response && j.response.flightroute;
-        if (!f || !f.origin || !f.destination) return;
-        routeInfo[call] = { from: f.origin.municipality || f.origin.name || '', to: f.destination.municipality || f.destination.name || '', airline: (f.airline && f.airline.name) || '' };
-        renderPanels();
-      }).catch(function () {});
-    return null;
-  }
-
   function renderSel() {
     if (offlineShown()) return;
     var ac = findSel(), rows = inView();
@@ -356,7 +354,7 @@
     if (state.auto) { ac = rows[0] || null; state.selId = ac ? ac.id : null; }
     var badges = $('selBadges'); badges.textContent = '';
     if (!ac) {
-      text('selCall', '–'); text('selRoute', ''); text('selRouteMore', ''); text('selType', state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now' : 'Waiting for aircraft');
+      text('selCall', '–'); text('selRoute', ''); text('selRouteMore', ''); text('selNote', ''); $('selPhotoWrap').hidden = true; text('selType', state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now' : 'Waiting for aircraft');
       ['selAlt', 'selSpd', 'selHdg', 'selDist'].forEach(function (id) { text(id, '–'); });
       text('selVs', ''); text('selCard8', ''); text('selBrg', 'nm'); text('selPass', 'Aircraft appear here as they come near.');
       return;
@@ -368,10 +366,15 @@
     var c = C.cpa(ac);
     if (!(ac.d < 2) && c && !c.receding && c.d < 3 && c.t < 900) badge('Approaching');
     text('selCall', ac.call);
-    text('selRoute', C.routeText(ac.route));
-    var info = routeDetails(ac.call);
-    text('selRouteMore', info ? [info.from && info.to ? info.from + ' to ' + info.to : '', info.airline].filter(Boolean).join(' · ') : (ac.mil ? C.MIL_LABEL[ac.mil] || '' : ''));
-    text('selType', [ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
+    if (lastLookup !== ac.id) { lastLookup = ac.id; T.lookup(ac, hub); }
+    var ri = routeInfo[ac.call], ai = acInfo[ac.id];
+    text('selRoute', C.routeText(routeOf(ac)));
+    text('selRouteMore', ri ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner ? ai.owner : ''));
+    text('selType', [ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
+    text('selNote', ac.mil ? [C.callsignNote(ac.call), ri ? (ai && ai.owner) || '' : '', C.MIL_LABEL[ac.mil] || ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
+    var ph = $('selPhoto'), photo = T.photos && ai && ai.photo;
+    $('selPhotoWrap').hidden = !photo;
+    if (photo && ph.getAttribute('src') !== photo) ph.setAttribute('src', photo);
     text('selAlt', C.fmtAlt(ac.alt) + (ac.alt < 18000 ? ' ft' : ''));
     text('selVs', Math.abs(ac.vs) < 200 ? 'level' : (ac.vs > 0 ? '▲ ' : '▼ ') + Math.round(Math.abs(ac.vs) / 50) * 50 + ' fpm');
     text('selSpd', Math.round(ac.gs));
@@ -405,7 +408,8 @@
     var ul = $('list'), rows = inView(); ul.textContent = '';
     if (!rows.length) return empty(ul, state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now.' : 'No aircraft yet.');
     rows.forEach(function (ac) {
-      ul.append(row(ac, function () { select(ac.id); }, [ac.route ? C.routeText(ac.route) : ac.call, ac.route ? ac.call : ac.type, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
+      var rt = routeOf(ac);
+      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, rt ? ac.call : ac.type, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
     });
   }
   function renderMil() {
@@ -528,43 +532,36 @@
   });
   try { var savedHome = JSON.parse(lsGet('og-home') || 'null'); if (savedHome && savedHome.length === 2) applyHome(savedHome[0], savedHome[1]); } catch (e) {}
 
-  /* ---------- feeds ---------- */
-  var lastSave = 0;
+  /* ---------- feeds (the transport decides where data comes from) ---------- */
+  var lastSave = 0, lastLookup = null, startHandler = null;
   function loadPasses() { try { JSON.parse(lsGet('og-passes') || '[]').forEach(function (p) { if (p && p.ts) tracker.add(p); }); } catch (e) {} }
   function savePasses() { if (Date.now() - lastSave < 15000) return; lastSave = Date.now(); lsSet('og-passes', JSON.stringify(tracker.log.slice(0, 150))); }
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function q() { var h = C.getHome(); return '?lat=' + h.lat.toFixed(3) + '&lon=' + h.lon.toFixed(3); }
-  async function pollNear() {
-    var fails = 0;
-    while (true) {
-      try {
-        var r = await fetch('api/planes' + q(), { cache: 'no-store' }), snap = await r.json();
-        if (!snap || !Array.isArray(snap.ac)) throw new Error((snap && snap.error) || 'no aircraft list');
-        fails = 0;
-        if (feed.ingest(snap, 'near', 60000)) { state.lastData = Math.min(Date.now(), snap.now); tracker.update(feed.list, Date.now()); savePasses(); }
-        if (state.mode !== 'live') { state.mode = 'live'; renderPanels(); }
-      } catch (e) {
-        fails++;
-        if (fails >= 3 && state.mode !== 'live') { state.mode = state.lastData ? 'paused' : 'off'; renderPanels(); }
-      }
-      await sleep(document.hidden ? 30000 : fails ? Math.min(30000, 5000 * fails) : 10000);
-    }
-  }
-  async function pollMil() {
-    while (true) {
-      var wait = 60000;
-      try {
-        var r = await fetch('api/military' + q(), { cache: 'no-store' }), snap = await r.json();
-        if (!snap || !Array.isArray(snap.ac)) throw new Error('no list');
-        feed.ingest(snap, 'mil', 150000); state.milOk = true; state.lastMil = Date.now();
-        tracker.update(feed.list, Date.now()); renderPanels();
-      } catch (e) { wait = 30000; }
-      await sleep(document.hidden ? 120000 : wait);
-    }
-  }
+  var hub = {
+    home: function () { return C.getHome(); },
+    near: function (snap) {
+      if (feed.ingest(snap, 'near', 60000)) { state.lastData = Math.min(Date.now(), snap.now); tracker.update(feed.list, Date.now()); savePasses(); }
+    },
+    mil: function (snap) {
+      feed.ingest(snap, 'mil', 150000); state.milOk = true; state.lastMil = Date.now(); tracker.update(feed.list, Date.now());
+    },
+    routes: function (map) {
+      Object.keys(map || {}).forEach(function (cs) { var r = map[cs]; if (r && r.r) routeInfo[cs] = r; });
+    },
+    aircraftInfo: function (hex, info) { if (info) acInfo[hex] = Object.assign(acInfo[hex] || {}, info); },
+    passes: function (list) { (list || []).forEach(function (p) { if (p && p.ts) tracker.add(p); }); },
+    passList: function () { return tracker.log; },
+    selected: function () { return findSel(); },
+    setMode: function (m, note, lastData) {
+      if (lastData) state.lastData = lastData;
+      if (state.mode === m && state.note === (note || '')) return;
+      state.mode = m; state.note = note || ''; renderPanels();
+    },
+    onStart: function (fn) { startHandler = fn; }
+  };
+  $('btnStart').addEventListener('click', function () { if (startHandler) startHandler(); });
+  $('selPhoto').addEventListener('error', function () { $('selPhotoWrap').hidden = true; var a = findSel(); if (a && acInfo[a.id]) acInfo[a.id].photo = ''; });
   loadPasses();
-  pollNear();
-  pollMil();
+  T.start(hub);
 
   /* ---------- loop ---------- */
   var lastPanel = 0;
@@ -572,7 +569,7 @@
     var removed = feed.step();
     tracker.update(feed.list, Date.now());
     removed.forEach(function (ac) { tracker.record(ac); });
-    if (state.mode === 'live' && Date.now() - state.lastData > 90000) { state.mode = 'paused'; }
+    if (state.mode === 'live' && state.lastData && Date.now() - state.lastData > 90000) { state.mode = 'paused'; }
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); }
     if (t - lastPanel > 800) { lastPanel = t; renderPanels(); checkAlerts(); }

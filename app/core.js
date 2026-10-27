@@ -37,12 +37,14 @@
     KC46: 'KC-46 Pegasus', E3TF: 'E-3 Sentry', E6: 'E-6 Mercury', P8: 'P-8 Poseidon', C40: 'C-40 Clipper', R135: 'RC-135',
     F16: 'F-16 Fighting Falcon', F15: 'F-15 Eagle', F18H: 'F/A-18 Super Hornet', F18S: 'F/A-18 Super Hornet', F35: 'F-35 Lightning II',
     F22: 'F-22 Raptor', A10: 'A-10 Thunderbolt II', T38: 'T-38 Talon', T6: 'T-6 Texan II', TEX2: 'T-6 Texan II', T45: 'T-45 Goshawk',
-    C12: 'C-12 Huron', U2: 'U-2', E2: 'E-2 Hawkeye', C2: 'C-2 Greyhound'
+    C12: 'C-12 Huron', U2: 'U-2 Dragon Lady', E2: 'E-2 Hawkeye', C2: 'C-2 Greyhound', Q4: 'RQ-4 Global Hawk', Q9: 'MQ-9 Reaper',
+    A400: 'Airbus A400M', T206: 'Cessna 206', C130H: 'C-130H Hercules', E3CF: 'E-3 Sentry'
   };
   var RE = {
     fighter: /^(F1[4568]|F18|F22|F35|A10|T38|T45|T6|TEX2|EUFI|AV8|F117)/,
     miltransport: /^(C17$|C5M|C130|C30J|C160|A400|KC46|K35R|E3|E6|E8|R135|P8|C2$|E2$)/,
     tiltrotor: /^V22/,
+    drone: /^(Q4|Q9|MQ9|MQ1|RQ4|Q1|U2|TR1)$/,
     heli: /^(H60|H47|H64|S92|S76|S70|EC|H1[2-6]|B06|B4[0-9]|B2|A1[0-6]9|AS[0-9]|R[24]4|R22|R66|UH1|MI|NH90|AW|H500|MD5)/,
     wide: /^(A30|A310|A33|A34|A35|A38|B74|B76|B77|B78|MD11|DC10|IL96|L101)/,
     narrow: /^(A31[89]|A32|A20N|A21N|A19N|B73|B3[789]M|B3XM|B75|B712|BCS|MD8|MD9|C40)/,
@@ -54,6 +56,7 @@
   function classOf(type, cat) {
     var t = type || '';
     if (RE.tiltrotor.test(t)) return 'tiltrotor';
+    if (RE.drone.test(t)) return 'drone';
     if (cat === 'A7' || RE.heli.test(t)) return 'heli';
     if (RE.fighter.test(t)) return 'fighter';
     if (RE.miltransport.test(t)) return 'miltransport';
@@ -174,9 +177,64 @@
   function card8(deg) { return DIRS[Math.round(deg / 45) % 8]; }
   function routeText(r) { return r ? r.replace('-', ' → ') : ''; }
 
+
+  /* ---------- military helpers (same rules as api/_lib.js) ---------- */
+  var MIL_CALLSIGNS = /^(RCH|SAM|PAT|CNV|SPAR|EXEC|AF[12]$|VENUS|NAVY|ARMY|USAF|KING|TEAL|EVAC|BLUE|JEDI|GOLD|SKULL|DUKE|IRON|HAWK)/;
+  function militaryFlag(a) {
+    if (a.dbFlags & 1) return 'db';
+    var n = parseInt(a.hex || '', 16);
+    if (n >= 0xae0000 && n <= 0xafffff) return 'hex';
+    var cs = (a.flight || '').trim();
+    if (cs && MIL_CALLSIGNS.test(cs)) return 'cs';
+    return '';
+  }
+  var CALLSIGN_NOTES = [
+    [/^AF1$/, 'Air Force One'], [/^AF2$/, 'Air Force Two'],
+    [/^SAM\d/, 'Special Air Mission: VIP transport out of Joint Base Andrews'],
+    [/^RCH\d/, 'Reach: Air Mobility Command cargo or tanker flight'],
+    [/^PAT\d/, 'Priority Air Transport: Army staff and VIP flight'],
+    [/^CNV\d/, 'Convoy: Navy airlift flight'],
+    [/^KING\d/, 'King: Air Force rescue (HC-130)'],
+    [/^TEAL\d/, 'Teal: Air Force Reserve Hurricane Hunters'],
+    [/^C\d{4}$/, 'Coast Guard aircraft']
+  ];
+  function callsignNote(cs) { for (var i = 0; i < CALLSIGN_NOTES.length; i++) if (CALLSIGN_NOTES[i][0].test(cs || '')) return CALLSIGN_NOTES[i][1]; return ''; }
+  function distanceNm(lat1, lon1, lat2, lon2) {
+    var dLat = (lat2 - lat1) * RAD, dLon = (lon2 - lon1) * RAD;
+    var h = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.pow(Math.sin(dLon / 2), 2);
+    return 2 * 3440.065 * Math.asin(Math.sqrt(h));
+  }
+  // readsb/"v2" aircraft object -> compact row (same layout the server sends)
+  function compactRow(a, route) {
+    if (typeof a.lat !== 'number' || typeof a.lon !== 'number') return null;
+    if (a.alt_baro === 'ground' || (a.category || '').charAt(0) === 'C') return null;
+    var alt = typeof a.alt_baro === 'number' ? a.alt_baro : typeof a.alt_geom === 'number' ? a.alt_geom : null;
+    if (alt === null) return null;
+    var age = a.seen_pos != null ? a.seen_pos : a.seen || 0;
+    if (age > 60) return null;
+    return [a.hex, (a.flight || '').trim(), a.r || '', a.t || '', a.category || '', Math.round(alt), Math.round(a.gs || 0),
+      Math.round(a.track != null ? a.track : a.true_heading || 0), Math.round(a.baro_rate != null ? a.baro_rate : a.geom_rate || 0),
+      +a.lat.toFixed(5), +a.lon.toFixed(5), +(+age).toFixed(1), militaryFlag(a), route || '', a.squawk || '', a.type || ''];
+  }
+  // pull the JSON object out of page text that may have extra lines around it
+  function extractJson(text) {
+    var s = text.indexOf('{');
+    if (s < 0) throw new Error(text.trim().slice(0, 80) || 'empty answer');
+    var depth = 0, inStr = false, esc = false;
+    for (var i = s; i < text.length; i++) {
+      var ch = text[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true; else if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) return JSON.parse(text.slice(s, i + 1)); }
+    }
+    throw new Error('answer was cut off');
+  }
+  function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
+
   root.Core = {
     setHome: setHome, getHome: getHome, toXY: toXY, bearingOf: bearingOf, PASS_NM: PASS_NM, MIL_LABEL: MIL_LABEL,
     createLiveFeed: createLiveFeed, createTracker: createTracker, classOf: classOf, cpa: cpa, altStop: altStop,
-    fmtAlt: fmtAlt, fmtDur: fmtDur, card8: card8, routeText: routeText, TYPES: TYPES
+    fmtAlt: fmtAlt, fmtDur: fmtDur, card8: card8, routeText: routeText, TYPES: TYPES,
+    militaryFlag: militaryFlag, callsignNote: callsignNote, distanceNm: distanceNm, compactRow: compactRow, extractJson: extractJson, looksLikeAirline: looksLikeAirline
   };
 })(typeof window !== 'undefined' ? window : globalThis);

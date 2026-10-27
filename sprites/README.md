@@ -10,7 +10,7 @@ The map draws each aircraft as a small built-in drawing. You can replace those d
 - Helicopters and the V-22 can include their rotor blades.
 - Keep the same lighting and angle across the set so they look like a family.
 
-## By class (9 images)
+## By class (10 images)
 
 Put these in this folder and list them under `classes` in `manifest.json`:
 
@@ -25,6 +25,7 @@ Put these in this folder and list them under `classes` in `manifest.json`:
 | `fighter.png` | F-16, F-15, F/A-18, F-35, F-22, A-10, T-38, T-6 |
 | `miltransport.png` | C-17, C-5, C-130, KC-135, KC-46, E-3, E-6, P-8 |
 | `tiltrotor.png` | V-22 Osprey |
+| `drone.png` | RQ-4 Global Hawk, MQ-9 Reaper, U-2 |
 
 ## By exact type (optional)
 
