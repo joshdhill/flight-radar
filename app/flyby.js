@@ -187,7 +187,7 @@
       if (a && a.d < 12 && root$.hidden) open(a, false);
     });
 
-    return { check: check, open: function (a) { open(a, true); }, isOpen: function () { return !root$.hidden; }, openId: function () { return cur && cur.id; }, brief: function (a) { return M.briefing(a, opt.info(a.id) || {}); } };
+    return { check: check, open: function (a) { open(a, true); }, shown: function (id) { return !!(seen[id] && Date.now() - seen[id] < COOLDOWN_MS); }, isOpen: function () { return !root$.hidden; }, openId: function () { return cur && cur.id; }, brief: function (a) { return M.briefing(a, opt.info(a.id) || {}); } };
   }
 
   root.Flyby = { create: create };

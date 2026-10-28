@@ -495,7 +495,8 @@
     if (!rows.length) return empty(ul, state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now.' : 'No aircraft yet.');
     rows.forEach(function (ac) {
       var rt = routeOf(ac);
-      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, [rt ? ac.call : '', C.shortType(ac.type)].filter(Boolean).join(' · '), C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
+      var sub = ac.mil && window.MilInfo ? window.MilInfo.label(ac, acInfo[ac.id]) : [rt ? ac.call : '', C.shortType(ac.type)].filter(Boolean).join(' · ');
+      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, sub, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
     });
   }
   function renderMil() {
@@ -553,7 +554,7 @@
       if (!a.mil || a.d > ALERT_NM) return;
       if (alerted[a.id] && now - alerted[a.id] < 3600e3) return;
       alerted[a.id] = now;
-      if (FB && (FB.openId() === a.id)) return;
+      if (FB && (FB.openId() === a.id || FB.shown(a.id))) return; // the flyby card (or its notification) already covered it
       var b = window.MilInfo ? window.MilInfo.briefing(a, acInfo[a.id]) : null;
       var msg = 'Military nearby: ' + a.call + ' · ' + (b ? b.aircraft.name + ', ' + b.service.short : a.typeName) + ' · ' + a.d.toFixed(1) + ' nm ' + C.card8(a.brg) + ', ' + C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '');
       if (!FB || !FB.isOpen()) toast(msg, a.id);
@@ -758,12 +759,22 @@
   $('btnBrief').addEventListener('click', function () { var a = findSel(); if (a && FB) FB.open(a); });
 
   /* ---------- loop ---------- */
-  var lastPanel = 0, tileVersion = -1, lastTileDraw = 0;
-  function frame(t) {
+  // Tracking and alerts run on their own timer, so they keep working in a background tab
+  // (browsers stop drawing frames there); the map itself is drawn every frame.
+  var lastPanel = 0, tileVersion = -1, lastTileDraw = 0, lastFrame = 0;
+  function logic() {
     var removed = feed.step();
     tracker.update(feed.list, Date.now());
     removed.forEach(function (ac) { tracker.record(ac); });
     if (state.mode === 'live' && state.lastData && Date.now() - state.lastData > 90000) { state.mode = 'paused'; }
+  }
+  setInterval(function () {
+    if (performance.now() - lastFrame < 1500) return; // frames are running; they do this
+    logic(); checkAlerts(); savePasses();
+  }, 1000);
+  function frame(t) {
+    lastFrame = performance.now();
+    logic();
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     if (state.follow) {
       var fa = null; for (var i = 0; i < feed.list.length; i++) if (feed.list[i].id === state.follow) { fa = feed.list[i]; break; }
