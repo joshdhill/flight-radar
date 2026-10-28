@@ -133,15 +133,21 @@
     prefetch(ac, hub);
   }
 
-  // Address search for the home location (nearby results ranked first).
-  function geocode(q) {
-    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q);
-    return fetch(url, { headers: { Accept: 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (list) {
-        var h = list && list[0];
-        if (!h) return null;
-        return { lat: +(+h.lat).toFixed(5), lon: +(+h.lon).toFixed(5), name: String(h.display_name || '').split(',').slice(0, 2).join(',').trim() };
+  // Address search for the home location: this site's /api/geocode (U.S. Census Bureau address
+  // data, OpenStreetMap as backup). If that's unreachable, ask OpenStreetMap directly.
+  function geocode(q, near) {
+    var nearArg = near ? '&near=' + near.lat.toFixed(2) + ',' + near.lon.toFixed(2) : '';
+    return fetch('api/geocode?q=' + encodeURIComponent(q) + nearArg)
+      .then(function (r) { if (!r.ok) throw new Error('geocode ' + r.status); return r.json(); })
+      .then(function (h) { return h && typeof h.lat === 'number' ? h : null; })
+      .catch(function () {
+        var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q);
+        return fetch(url, { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+          var h = list && list[0]; if (!h) return null;
+          var a = h.address || {};
+          return { lat: +(+h.lat).toFixed(6), lon: +(+h.lon).toFixed(6), exact: !!a.house_number,
+            name: a.house_number && a.road ? a.house_number + ' ' + a.road : String(h.display_name || '').split(',').slice(0, 2).join(',').trim() };
+        });
       });
   }
 

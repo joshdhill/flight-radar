@@ -1,7 +1,8 @@
 /* Plane Sight — live base map from OpenFreeMap vector tiles (OpenStreetMap data).
    Tiles are fetched for whatever part of the map is on screen, decoded here, and handed to the
    map drawing as plain lat/lon shapes. Detail follows the zoom: highways and coastlines when
-   zoomed out to the 250 nm military view, streets and creeks up close. */
+   zoomed out to the 250 nm military view, streets and creeks closer in, and at street level
+   every road, its name, building outlines and house numbers (handy for pinning home exactly). */
 (function () {
   'use strict';
   var TILEJSON = 'https://tiles.openfreemap.org/planet';
@@ -76,7 +77,7 @@
 
   var PLACE_TIER = { city: 1, town: 2, village: 3, suburb: 3 };
   function extract(layers, z, x, y) {
-    var D = { water: [], wood: [], park: [], river: [], stream: [], major: [], primary: [], secondary: [], boundary: [], places: [], shields: [], airports: [] };
+    var D = { water: [], wood: [], park: [], river: [], stream: [], major: [], primary: [], secondary: [], minor: [], boundary: [], places: [], shields: [], airports: [], names: [], buildings: [], housenumbers: [] };
     function each(name, fn) { var L = layers[name]; if (!L) return; L.feats.forEach(function (F) { fn(tags(L, F), F, L.extent); }); }
     each('water', function (t, F, e) { if (F.type === 3) push(D.water, geom(F, e, z, x, y)); });
     each('landcover', function (t, F, e) { if (F.type === 3 && t['class'] === 'wood') push(D.wood, geom(F, e, z, x, y)); });
@@ -88,7 +89,24 @@
       if (c === 'motorway' || c === 'trunk') push(D.major, geom(F, e, z, x, y));
       else if (c === 'primary') push(D.primary, geom(F, e, z, x, y));
       else if (c === 'secondary') push(D.secondary, geom(F, e, z, x, y));
+      else if (z >= 12 && (c === 'tertiary' || c === 'minor')) push(D.minor, geom(F, e, z, x, y));
     });
+    // street level: building outlines, house numbers and street names (only in the most detailed tiles)
+    if (z >= 13) {
+      each('transportation_name', function (t, F, e) {
+        if (F.type !== 2 || !t.name || t.network === 'us-interstate') return;
+        var c = t['class'];
+        if (c !== 'minor' && c !== 'tertiary' && c !== 'secondary' && c !== 'primary' && c !== 'trunk') return;
+        geom(F, e, z, x, y).forEach(function (line) { if (line.length > 1) D.names.push([t.name, line]); });
+      });
+    }
+    if (z >= 14) {
+      each('building', function (t, F, e) { if (F.type === 3) push(D.buildings, geom(F, e, z, x, y)); });
+      each('housenumber', function (t, F, e) {
+        if (!t.housenumber) return;
+        var p = geom(F, e, z, x, y)[0]; if (p && p[0]) D.housenumbers.push([String(t.housenumber), p[0][0], p[0][1]]);
+      });
+    }
     each('boundary', function (t, F, e) { if (F.type === 2 && !t.maritime && (t.admin_level === 4 || t.admin_level === 2)) push(D.boundary, geom(F, e, z, x, y)); });
     each('place', function (t, F, e) {
       var tier = PLACE_TIER[t['class']], name = t['name:en'] || t.name;
@@ -145,7 +163,7 @@
   function layersFor(vb, z) {
     z = Math.max(3, Math.min(14, z));
     var x0 = lon2x(vb[2], z), x1 = lon2x(vb[3], z), y0 = lat2y(vb[1], z), y1 = lat2y(vb[0], z), n = Math.pow(2, z);
-    var out = { water: [], wood: [], park: [], river: [], stream: [], major: [], primary: [], secondary: [], boundary: [], places: [], shields: [], airports: [], loading: 0 };
+    var out = { water: [], wood: [], park: [], river: [], stream: [], major: [], primary: [], secondary: [], minor: [], boundary: [], places: [], shields: [], airports: [], names: [], buildings: [], housenumbers: [], loading: 0 };
     var used = {}, count = 0;
     for (var x = x0; x <= x1 && count < 80; x++) for (var y = y0; y <= y1 && count < 80; y++, count++) {
       if (y < 0 || y >= n) continue;
@@ -167,8 +185,8 @@
     return out;
   }
   function merge(out, d) {
-    ['water', 'wood', 'park', 'river', 'stream', 'major', 'primary', 'secondary', 'boundary', 'places', 'shields', 'airports'].forEach(function (k) {
-      var a = d[k]; for (var i = 0; i < a.length; i++) out[k].push(a[i]);
+    ['water', 'wood', 'park', 'river', 'stream', 'major', 'primary', 'secondary', 'minor', 'boundary', 'places', 'shields', 'airports', 'names', 'buildings', 'housenumbers'].forEach(function (k) {
+      var a = d[k] || []; for (var i = 0; i < a.length; i++) out[k].push(a[i]);
     });
   }
 

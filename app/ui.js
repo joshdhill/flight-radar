@@ -57,14 +57,15 @@
   }
 
   /* ---------- state ---------- */
-  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', note: '', lastData: 0, lastMil: 0, milOk: false, follow: null, cycleView: -1, cycleMil: -1 };
+  var state = { range: 10, panX: 0, panY: 0, selId: null, auto: true, tab: 'now', mode: 'connecting', note: '', lastData: 0, lastMil: 0, milOk: false, follow: null, cycleView: -1, cycleMil: -1, milFilter: 'all', milQuery: '' };
+  var isPhone = function () { try { return matchMedia('(max-width: 1000px)').matches; } catch (e) { return false; } };
   var feed = C.createLiveFeed(), tracker = C.createTracker();
   var canvas = $('map'), ctx = canvas.getContext('2d'), W = 0, H = 0, DPR = 1;
   var baseCanvas = document.createElement('canvas'), bctx = baseCanvas.getContext('2d'), baseKey = '';
   var col = {}, altRGB = [];
   (function readColors() {
     var cs = getComputedStyle(document.documentElement), g = function (n) { return cs.getPropertyValue(n).trim(); };
-    ['land', 'land-glow', 'wood', 'park', 'water', 'river', 'road-major', 'road-primary', 'road-secondary', 'label', 'label-strong', 'ring', 'zone',
+    ['land', 'land-glow', 'wood', 'park', 'water', 'river', 'road-major', 'road-primary', 'road-secondary', 'road-minor', 'building', 'building-edge', 'label', 'label-strong', 'ring', 'zone',
       'home', 'fg', 'fg-muted', 'fg-faint', 'mil', 'danger', 'boundary'].forEach(function (k) { col[k] = g('--' + k); });
     for (var i = 0; i < 7; i++) {
       var n = parseInt(g('--alt-' + i).replace('#', ''), 16);
@@ -117,7 +118,9 @@
     g.beginPath(); sets.forEach(function (p) { pathOf(g, p); g.closePath(); });
     g.fillStyle = style; g.fill();
   }
-  function niceStep(R) { return R <= 6 ? 1 : R <= 12 ? 2 : R <= 25 ? 5 : R <= 60 ? 10 : R <= 150 ? 25 : 50; }
+  function niceStep(R) { return R <= 0.6 ? 0.1 : R <= 1.5 ? 0.25 : R <= 3 ? 0.5 : R <= 6 ? 1 : R <= 12 ? 2 : R <= 25 ? 5 : R <= 60 ? 10 : R <= 150 ? 25 : 50; }
+  var MIN_RANGE = 0.25, MAX_RANGE = 300;
+  function clampRange(r) { return Math.max(MIN_RANGE, Math.min(MAX_RANGE, r)); }
 
   // Map shapes for the current view: live tiles on the website, the built-in map in the Claude dashboard.
   function groupShields(list) {
@@ -127,14 +130,14 @@
   function mapLayers(vb, R) {
     if (window.OG_TILES) {
       var mpp = 1852 / scale(), zx = Math.log(156543.03 * Math.cos(C.getHome().lat * RAD) / mpp) / Math.LN2;
-      var L = window.OG_TILES.layersFor(vb, Math.floor(zx - 1));
+      var L = window.OG_TILES.layersFor(vb, Math.floor(zx - 0.4));
       L.shields = groupShields(L.shields);
       return L;
     }
     var W2 = WIDE;
     return {
       water: vis(OSM.water, vb), wood: vis(OSM.wood, vb), park: vis(OSM.park, vb), river: vis(OSM.river, vb), stream: vis(OSM.stream, vb),
-      major: vis(OSM.major, vb), primary: vis(OSM.primary, vb), secondary: vis(OSM.secondary, vb), boundary: [],
+      major: vis(OSM.major, vb), primary: vis(OSM.primary, vb), secondary: vis(OSM.secondary, vb), minor: [], names: [], buildings: [], housenumbers: [], boundary: [],
       places: OSM.places, shields: OSM.shields, airports: AIRPORTS,
       wide: W2 && W2.ready ? { water: vis(W2.water, vb), major: vis(W2.major, vb), boundary: vis(W2.boundary, vb), places: W2.places, airports: W2.airports, box: W2.detailBox } : null
     };
@@ -166,15 +169,21 @@
       strokeSet(g, M.wide.major, col['road-major'], 1.4);
       g.restore();
     }
+    var zw = R < 2 ? Math.min(5, 2 / R) : 1; // roads widen as you zoom in to street level
     if (R <= 60) fillSet(g, M.wood, col['wood']);
     if (R <= 60) fillSet(g, M.park, col['park']);
-    if (R <= 6) strokeSet(g, M.stream, col['river'], 0.8);
-    strokeSet(g, M.river, col['river'], 1.4 * z);
+    if (R <= 6) strokeSet(g, M.stream, col['river'], 0.8 * zw);
+    strokeSet(g, M.river, col['river'], 1.4 * z * zw);
     fillSet(g, M.water, col['water']);
     dashSet(g, M.boundary, col['boundary'], 1);
-    if (R <= 6) strokeSet(g, M.secondary, col['road-secondary'], 0.9);
-    if (R <= 30) strokeSet(g, M.primary, col['road-primary'], 1.1 * z);
-    strokeSet(g, M.major, col['road-major'], (R > 60 ? 1.2 : 1.7) * z);
+    if (R <= 1.2 && M.buildings.length) {
+      fillSet(g, vis(M.buildings, vb), col['building']);
+      if (R <= 0.6) strokeSet(g, vis(M.buildings, vb), col['building-edge'], 0.8);
+    }
+    if (R <= 2.5) strokeSet(g, M.minor, col['road-minor'], 1.1 * zw);
+    if (R <= 6) strokeSet(g, M.secondary, col['road-secondary'], 0.9 * zw);
+    if (R <= 30) strokeSet(g, M.primary, col['road-primary'], 1.1 * z * zw);
+    strokeSet(g, M.major, col['road-major'], (R > 60 ? 1.2 : 1.7) * z * zw);
 
     g.beginPath(); g.arc(hp[0], hp[1], 2 * k, 0, Math.PI * 2); g.fillStyle = col['zone']; g.fill();
     var step = niceStep(R);
@@ -192,16 +201,18 @@
     boxes.push([hp[0] - 16, hp[1] - 16, 32, 32]);
     try {
       var cr = canvas.getBoundingClientRect();
-      document.querySelectorAll('.hud-stats, .hud-ctrl, .overlay').forEach(function (el) {
-        if (getComputedStyle(el).position !== 'absolute') return;
+      document.querySelectorAll('.hud-stats, .hud-ctrl, .overlay, .mil-fab, .mini-sel:not([hidden]), .peek, .top').forEach(function (el) {
+        var ps = getComputedStyle(el).position; if (ps !== 'absolute' && ps !== 'fixed') return;
         var r = el.getBoundingClientRect(); boxes.push([r.left - cr.left - 8, r.top - cr.top - 8, r.width + 16, r.height + 16]);
       });
     } catch (e) {}
     g.font = '10px "B612 Mono", ui-monospace, monospace'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillStyle = col['fg-faint'];
     for (i = 1; i * step <= R + 0.01; i++) {
-      var rr = step * i * k, lx = hp[0] + rr * 0.7071 + 3, ly = hp[1] - rr * 0.7071 - 2, txt = (step * i) + ' nm', tw0 = g.measureText(txt).width;
+      var rr = step * i * k, lx = hp[0] + rr * 0.7071 + 3, ly = hp[1] - rr * 0.7071 - 2, txt = +(step * i).toFixed(2) + ' nm', tw0 = g.measureText(txt).width;
       if (free(lx, ly - 11, tw0 + 2, 12)) g.fillText(txt, lx, ly);
     }
+    if (R <= 1.6) drawStreetNames(g, M.names, free);
+    if (R <= 0.7) drawHouseNumbers(g, M.housenumbers, free);
     g.font = '700 9.5px "B612 Mono", ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
     var target = Math.min(W, H) * 0.3;
     (R <= 60 ? M.shields : []).forEach(function (s) {
@@ -239,6 +250,42 @@
       if (!free(q2[0] - tw2 / 2 - 4, q2[1] - 8, tw2 + 8, 16)) continue;
       g.fillStyle = p[1] === 1 ? col['label-strong'] : col['label'];
       g.fillText(p[0], q2[0], q2[1]); shown++;
+    }
+  }
+
+  // Street names along the longest visible stretch of each street.
+  function drawStreetNames(g, names, free) {
+    var best = {};
+    names.forEach(function (n) {
+      var pts = n[1];
+      for (var i = 1; i < pts.length; i++) {
+        var a = proj(pts[i - 1][0], pts[i - 1][1]), b = proj(pts[i][0], pts[i][1]);
+        var len = Math.hypot(b[0] - a[0], b[1] - a[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        if (mx < 10 || my < 10 || mx > W - 10 || my > H - 10) continue;
+        if (!best[n[0]] || len > best[n[0]].len) best[n[0]] = { len: len, a: a, b: b, x: mx, y: my };
+      }
+    });
+    g.font = '10.5px "B612", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    Object.keys(best).forEach(function (name) {
+      var s = best[name], tw = g.measureText(name).width;
+      if (s.len < tw + 12) return;
+      var ang = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
+      if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
+      var bw = Math.abs(Math.cos(ang)) * tw + Math.abs(Math.sin(ang)) * 12, bh = Math.abs(Math.sin(ang)) * tw + Math.abs(Math.cos(ang)) * 12;
+      if (!free(s.x - bw / 2, s.y - bh / 2, bw, bh)) return;
+      g.save(); g.translate(s.x, s.y); g.rotate(ang);
+      g.lineWidth = 3; g.strokeStyle = col['land']; g.lineJoin = 'round'; g.strokeText(name, 0, 0);
+      g.fillStyle = col['label']; g.fillText(name, 0, 0); g.restore();
+    });
+  }
+  function drawHouseNumbers(g, nums, free) {
+    g.font = '9px "B612 Mono", ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    var shown = 0;
+    for (var i = 0; i < nums.length && shown < 400; i++) {
+      var q = proj(nums[i][1], nums[i][2]); if (q[0] < 0 || q[1] < 0 || q[0] > W || q[1] > H) continue;
+      var tw = g.measureText(nums[i][0]).width;
+      if (!free(q[0] - tw / 2 - 1, q[1] - 6, tw + 2, 12)) continue;
+      g.fillStyle = col['fg-faint']; g.fillText(nums[i][0], q[0], q[1]); shown++;
     }
   }
 
@@ -379,6 +426,27 @@
   /* ---------- panels ---------- */
   function inView() { return feed.list.filter(function (a) { return a.d <= state.range; }).sort(function (a, b) { return a.d - b.d; }); }
   function military() { return feed.list.filter(function (a) { return a.mil && a.d <= MIL_RANGE; }).sort(function (a, b) { return a.d - b.d; }); }
+  // Military list filters: search text plus one chip (all, coming my way, helicopters, a branch).
+  function inbound(a) { var c = C.cpa(a); return !!(c && !c.receding && c.d < 10 && c.t < 3600); }
+  function milMatch(a, f) {
+    if (f === 'all') return true;
+    if (f === 'inbound') return inbound(a);
+    if (f === 'heli') return a.cls === 'heli' || a.cls === 'tiltrotor';
+    var k = window.MilInfo ? window.MilInfo.service(a, acInfo[a.id]).key : '';
+    return k === f || (f === 'army' && k === 'arng') || (f === 'af' && k === 'ang');
+  }
+  function milText(a) {
+    if (!window.MilInfo) return (a.call + ' ' + a.reg + ' ' + a.type).toLowerCase();
+    var b = window.MilInfo.briefing(a, acInfo[a.id]);
+    return [a.call, a.reg, a.type, b.aircraft.name, b.aircraft.role, b.service.name, b.service.short, b.mission ? b.mission.title : ''].join(' ').toLowerCase();
+  }
+  function militaryShown() {
+    var f = state.milFilter, q = state.milQuery.trim().toLowerCase();
+    var rows = military().filter(function (a) { return milMatch(a, f) && (!q || milText(a).indexOf(q) >= 0); });
+    if (f === 'inbound') rows.sort(function (a, b) { return C.cpa(a).t - C.cpa(b).t; });
+    return rows;
+  }
+  function closestMil() { var m = military(); return m[0] || null; }
   function findSel() { for (var i = 0; i < feed.list.length; i++) if (feed.list[i].id === state.selId) return feed.list[i]; return null; }
   // center: keep this plane in the middle of the map as it moves
   function select(id, center) {
@@ -427,6 +495,10 @@
     text('stMil', state.milOk ? mil.length : '–');
     text('stPasses', tracker.log.filter(function (p) { return p.ts >= today; }).length);
     text('milCount', state.milOk ? String(mil.length) : '');
+    var cm = mil[0];
+    text('closestMilText', cm ? cm.call + ' · ' + (cm.d < 10 ? cm.d.toFixed(1) : Math.round(cm.d)) + ' nm ' + C.card8(cm.brg) : state.milOk ? 'none in 250 nm' : '…');
+    $('btnClosestMil').disabled = !cm;
+    $('btnClosestMil').classList.toggle('near', !!(cm && cm.d < 15));
   }
 
   function renderSel() {
@@ -452,7 +524,7 @@
     var ri = routeInfo[ac.call], ai = acInfo[ac.id];
     text('selRoute', C.routeText(routeOf(ac)));
     var shownRoute = routeOf(ac), riOk = ri && ri.r === shownRoute;
-    text('selRouteMore', riOk ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner ? ai.owner : ''));
+    text('selRouteMore', riOk ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner && !ac.mil ? ai.owner : ''));
     var br = ac.mil && window.MilInfo ? window.MilInfo.briefing(ac, ai) : null;
     text('selType', [br ? br.aircraft.name : ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
     text('selNote', br ? [br.service.name, br.mission ? br.mission.title : ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
@@ -496,15 +568,25 @@
     rows.forEach(function (ac) {
       var rt = routeOf(ac);
       var sub = ac.mil && window.MilInfo ? window.MilInfo.label(ac, acInfo[ac.id]) : [rt ? ac.call : '', C.shortType(ac.type)].filter(Boolean).join(' · ');
-      ul.append(row(ac, function () { select(ac.id); }, [rt ? C.routeText(rt) : ac.call, sub, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
+      ul.append(row(ac, function () { select(ac.id); if (isPhone()) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [rt ? C.routeText(rt) : ac.call, sub, C.fmtAlt(ac.alt), ac.d.toFixed(1) + ' nm']));
     });
   }
   function renderMil() {
-    var ul = $('milList'), rows = military(); ul.textContent = '';
+    var ul = $('milList'), all = military(), rows = militaryShown(); ul.textContent = '';
+    $('milChips').querySelectorAll('button').forEach(function (b) {
+      var f = b.getAttribute('data-f'), n = all.filter(function (a) { return milMatch(a, f); }).length;
+      var c = b.querySelector('.n'); if (!c) { c = document.createElement('span'); c.className = 'n'; b.append(c); }
+      c.textContent = state.milOk ? String(n) : '';
+    });
     if (!state.milOk) return empty(ul, 'Loading military aircraft within ' + MIL_RANGE + ' nm…');
-    if (!rows.length) return empty(ul, 'No military aircraft broadcasting within ' + MIL_RANGE + ' nm right now.');
+    if (!all.length) return empty(ul, 'No military aircraft broadcasting within ' + MIL_RANGE + ' nm right now.');
+    if (!rows.length) return empty(ul, state.milFilter === 'inbound' ? 'Nothing military is headed close to home right now.' : 'No military aircraft match.');
     rows.forEach(function (ac) {
-      ul.append(row(ac, function () { select(ac.id, true); }, [ac.call, window.MilInfo ? window.MilInfo.label(ac, acInfo[ac.id]) : C.shortType(ac.type), C.fmtAlt(ac.alt), Math.round(ac.d) + ' nm ' + C.card8(ac.brg)]));
+      var c = C.cpa(ac), coming = inbound(ac);
+      var where = coming ? 'in ' + Math.max(1, Math.round(c.t / 60)) + ' min, ' + c.d.toFixed(1) + ' nm' : (ac.d < 10 ? ac.d.toFixed(1) : Math.round(ac.d)) + ' nm ' + C.card8(ac.brg);
+      var li = row(ac, function () { select(ac.id, true); if (isPhone()) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [ac.call, window.MilInfo ? window.MilInfo.label(ac, acInfo[ac.id]) : C.shortType(ac.type), C.fmtAlt(ac.alt), where]);
+      if (coming) li.firstChild.classList.add('coming');
+      ul.append(li);
     });
   }
   var milOnly = false;
@@ -523,7 +605,7 @@
     });
   }
   function renderPanels() {
-    renderStatus(); renderOffline(); renderStats(); renderSel();
+    renderStatus(); renderOffline(); renderStats(); renderSel(); renderMini();
     if (state.tab === 'now') renderList(); else if (state.tab === 'mil') renderMil(); else renderLog();
   }
 
@@ -539,8 +621,8 @@
     if (alertsOn && 'Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) {} }
   });
   var toastTimer = null, toastId = null;
-  function toast(msg, id) {
-    var el = $('toast'); el.textContent = msg; el.hidden = false; toastId = id || null;
+  function toast(msg, id, kind) {
+    var el = $('toast'); el.textContent = msg; el.hidden = false; toastId = id || null; el.classList.toggle('info', kind === 'info');
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 9000);
   }
   function notify(title, body, id) {
@@ -579,7 +661,7 @@
   function syncRangeSeg() { $('rangeSeg').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', Math.abs(+b.getAttribute('data-range') - state.range) < 0.4 ? 'true' : 'false'); }); }
   segBind('rangeSeg', 'data-range', function (v) { state.range = +v; renderPanels(); });
   segBind('tabSeg', 'data-tab', function (v) {
-    state.tab = v; $('list').hidden = v !== 'now'; $('milList').hidden = v !== 'mil'; $('log').hidden = v !== 'passes'; $('btnAlerts').hidden = v !== 'mil'; $('btnMilOnly').hidden = v !== 'passes';
+    state.tab = v; $('list').hidden = v !== 'now'; $('milList').hidden = v !== 'mil'; $('log').hidden = v !== 'passes'; $('btnAlerts').hidden = v !== 'mil'; $('btnMilOnly').hidden = v !== 'passes'; $('milTools').hidden = v !== 'mil';
     text('listTitle', v === 'now' ? 'In view' : v === 'mil' ? 'Military within ' + MIL_RANGE + ' nm' : 'Passes within ' + C.PASS_NM + ' nm');
     renderPanels();
   });
@@ -595,42 +677,134 @@
     var rows = inView(); if (!rows.length) return;
     state.cycleView = 0; select(rows[0].id, true);
   });
+  $('milChips').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.milFilter = b.getAttribute('data-f'); state.cycleMil = -1;
+    this.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    renderPanels();
+  });
+  $('milSearch').addEventListener('input', function () { state.milQuery = this.value; state.cycleMil = -1; renderPanels(); });
+  // Always one tap away: the closest military aircraft, centered and followed.
+  $('btnClosestMil').addEventListener('click', function () {
+    var a = closestMil(); if (!a) return;
+    select(a.id, true);
+    if (a.d < 20 && state.range > 25) { state.range = 10; syncRangeSeg(); }
+  });
   $('tileMil').addEventListener('click', function () {
-    var rows = military(); if (!rows.length) return;
+    var rows = militaryShown(); if (!rows.length) rows = military(); if (!rows.length) return;
     state.cycleMil = (state.cycleMil + 1) % rows.length; select(rows[state.cycleMil].id, true);
     if (state.tab !== 'mil') $('tabSeg').querySelector('button[data-tab="mil"]').click();
   });
   $('tilePasses').addEventListener('click', function () { $('tabSeg').querySelector('button[data-tab="passes"]').click(); });
-  canvas.addEventListener('wheel', function (e) {
-    e.preventDefault();
-    var r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k0 = scale(), c = center();
-    var wx = (mx - c[0]) / k0 + state.panX, wy = -(my - c[1]) / k0 + state.panY;
-    state.range = Math.max(2.5, Math.min(300, state.range * Math.exp(e.deltaY * 0.0015)));
-    var k1 = scale(); state.panX = wx - (mx - c[0]) / k1; state.panY = wy + (my - c[1]) / k1;
+  /* ---------- map gestures: drag, pinch, scroll wheel, double-tap, press and hold ---------- */
+  function rel(e) { var r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+  function worldAt(p) { var k = scale(), c = center(); return [(p[0] - c[0]) / k + state.panX, -(p[1] - c[1]) / k + state.panY]; }
+  // Zoom so the map point under screen point p stays put (a followed plane stays centered).
+  function zoomAround(p, range, world) {
+    state.range = clampRange(range);
+    if (!state.follow) { var k = scale(), c = center(); state.panX = world[0] - (p[0] - c[0]) / k; state.panY = world[1] + (p[1] - c[1]) / k; }
     syncRangeSeg();
+  }
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault(); var p = rel(e);
+    zoomAround(p, state.range * Math.exp(e.deltaY * 0.0015), worldAt(p));
   }, { passive: false });
-  var drag = null, dragged = false;
+  ['gesturestart', 'gesturechange'].forEach(function (ev) { canvas.addEventListener(ev, function (e) { e.preventDefault(); }); }); // Safari: zoom the map, not the page
+  var pts = new Map(), gest = null, dragged = false, lpTimer = null, lastTap = 0, lastTapP = null, popAt = null;
+  function cancelHold() { clearTimeout(lpTimer); lpTimer = null; }
+  function startHold(p) {
+    cancelHold();
+    lpTimer = setTimeout(function () { lpTimer = null; dragged = true; showHomePop(p); try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} }, 600);
+  }
+  var lastPointerType = 'mouse';
   canvas.addEventListener('pointerdown', function (e) {
-    if (e.pointerType !== 'mouse') return;
-    drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY }; dragged = false;
+    lastPointerType = e.pointerType;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    var p = rel(e); pts.set(e.pointerId, p);
+    if (pts.size === 1) { gest = { pan: true, start: p, px: state.panX, py: state.panY }; dragged = false; startHold(p); }
+    else if (pts.size === 2) {
+      cancelHold(); var v = Array.from(pts.values()), mid = [(v[0][0] + v[1][0]) / 2, (v[0][1] + v[1][1]) / 2];
+      gest = { pinch: true, d0: Math.max(10, Math.hypot(v[0][0] - v[1][0], v[0][1] - v[1][1])), r0: state.range, world: worldAt(mid) };
+      dragged = true;
+    }
   });
   canvas.addEventListener('pointermove', function (e) {
-    if (!drag) return;
-    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!dragged && Math.hypot(dx, dy) < 4) return;
-    if (!dragged) stopFollow();
-    dragged = true; canvas.classList.add('dragging');
-    var k = scale(); state.panX = drag.px - dx / k; state.panY = drag.py + dy / k;
+    if (!pts.has(e.pointerId) || !gest) return;
+    var p = rel(e); pts.set(e.pointerId, p);
+    if (gest.pinch && pts.size >= 2) {
+      var v = Array.from(pts.values()), mid = [(v[0][0] + v[1][0]) / 2, (v[0][1] + v[1][1]) / 2], d = Math.max(10, Math.hypot(v[0][0] - v[1][0], v[0][1] - v[1][1]));
+      zoomAround(mid, gest.r0 * gest.d0 / d, gest.world);
+    } else if (gest.pan) {
+      var dx = p[0] - gest.start[0], dy = p[1] - gest.start[1];
+      if (!dragged && Math.hypot(dx, dy) < 6) return;
+      cancelHold();
+      if (!dragged) stopFollow();
+      dragged = true; canvas.classList.add('dragging');
+      var k = scale(); state.panX = gest.px - dx / k; state.panY = gest.py + dy / k;
+    }
   });
-  function endDrag() { drag = null; canvas.classList.remove('dragging'); }
-  canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+  function endPointer(e) {
+    if (!pts.has(e.pointerId)) return;
+    var p = pts.get(e.pointerId); pts.delete(e.pointerId); cancelHold();
+    if (pts.size === 1) { var q = pts.values().next().value; gest = { pan: true, start: q, px: state.panX, py: state.panY }; return; }
+    if (pts.size) return;
+    canvas.classList.remove('dragging'); gest = null;
+    // double-tap zooms in on that spot
+    if (e.type === 'pointerup' && e.pointerType !== 'mouse' && !dragged) {
+      var now = Date.now();
+      if (now - lastTap < 320 && lastTapP && Math.hypot(p[0] - lastTapP[0], p[1] - lastTapP[1]) < 30) { zoomAround(p, state.range / 2, worldAt(p)); lastTap = 0; dragged = true; }
+      else { lastTap = now; lastTapP = p; }
+    }
+  }
+  canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('dblclick', function (e) { if (lastPointerType !== 'mouse') return; var p = rel(e); zoomAround(p, state.range / 2, worldAt(p)); }); // touch double-taps are handled above
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); dragged = true; showHomePop(rel(e)); });
   canvas.addEventListener('click', function (e) {
     if (dragged) { dragged = false; return; }
+    if (!$('homePop').hidden) { hideHomePop(); return; }
     var r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = null, bd = 30;
     feed.list.forEach(function (ac) { if (!ac.vis) return; var d = Math.hypot(ac.px - x, ac.py - y); if (d < bd) { bd = d; best = ac; } });
     if (best) select(best.id); else { state.auto = true; renderPanels(); }
   });
+
+  // Press and hold (or right-click) on the map: set home right there.
+  function showHomePop(p) {
+    var w = worldAt(p), h = C.getHome(), cosl = Math.cos(h.lat * RAD);
+    popAt = { p: p, lat: +(h.lat + w[1] / 60).toFixed(5), lon: +(h.lon + w[0] / (60 * cosl)).toFixed(5), world: w };
+    var pop = $('homePop'); pop.hidden = false;
+    var pw = pop.offsetWidth || 180, ph = pop.offsetHeight || 80;
+    pop.style.left = Math.max(8, Math.min(W - pw - 8, p[0] - pw / 2)) + 'px';
+    pop.style.top = Math.max(8, p[1] - ph - 18) + 'px';
+  }
+  function hideHomePop() { $('homePop').hidden = true; popAt = null; }
+  $('btnPopCancel').addEventListener('click', hideHomePop);
+  $('btnPopSet').addEventListener('click', function () {
+    if (!popAt) return;
+    var a = popAt; hideHomePop();
+    if (saveHome(a.lat, a.lon, 'My house')) toast('Home set right there. It’s saved in this browser.', null, 'info');
+  });
+  function drawPopPin() {
+    if (!popAt) return;
+    var k = scale(), c = center(), x = c[0] + (popAt.world[0] - state.panX) * k, y = c[1] - (popAt.world[1] - state.panY) * k;
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fillStyle = col['home']; ctx.globalAlpha = 0.9; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.strokeStyle = col['home']; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+  }
+
+  /* ---------- phone: small card for the selected plane, and a handle down to the lists ---------- */
+  $('miniSel').addEventListener('click', function () { $('selCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('btnPeek').addEventListener('click', function () { document.querySelector('.overlay').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  function renderMini() {
+    var mini = $('miniSel'), a = state.auto ? null : findSel();
+    if (!a) { mini.hidden = true; return; }
+    mini.hidden = false;
+    var rt = routeOf(a);
+    text('msCall', rt ? C.routeText(rt) : a.call);
+    var br = a.mil && window.MilInfo ? window.MilInfo.briefing(a, acInfo[a.id]) : null;
+    text('msSub', [rt ? a.call : '', br ? br.aircraft.name + ' · ' + br.service.short : C.shortType(a.type), C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '')].filter(Boolean).join(' · '));
+    text('msNum', (a.d < 10 ? a.d.toFixed(1) : Math.round(a.d)) + ' nm ' + C.card8(a.brg));
+    mini.classList.toggle('mil', !!a.mil);
+  }
 
   var DEFAULT_HOME = window.OG_DEFAULT_HOME || { lat: 39.1732, lon: -77.2717, name: 'Germantown, MD' };
   function inMapArea(la, lo) {
@@ -645,7 +819,7 @@
     baseKey = '';
   }
   function saveHome(la, lo, name) {
-    if (!inMapArea(la, lo)) { text('homeNote', 'That spot is outside the map, which covers about 25 miles around Germantown.'); return false; }
+    if (!inMapArea(la, lo)) { text('homeNote', 'That spot is outside the map, which covers about 25 miles around Germantown.'); toast('That spot is outside this map.', null, 'info'); return false; }
     applyHome(la, lo, name); lsSet('og-home', JSON.stringify([la, lo, name || '']));
     text('homeNote', 'Home moved. It’s saved in this browser.');
     closeHome(); return true;
@@ -661,9 +835,12 @@
     e.preventDefault();
     var q = $('homeQuery').value.trim(); if (!q || !canSearch) return;
     text('homeNote', 'Looking up “' + q + '”…');
-    T.geocode(q).then(function (hit) {
-      if (!hit) { text('homeNote', 'No match near Germantown. Try a street address with the town name.'); return; }
-      saveHome(hit.lat, hit.lon, hit.name);
+    T.geocode(q, C.getHome()).then(function (hit) {
+      if (!hit) { text('homeNote', 'No match. Try the street address with the town name.'); return; }
+      if (!saveHome(hit.lat, hit.lon, hit.name)) return;
+      state.range = 0.5; syncRangeSeg(); // street level, so you can check the pin against the buildings and house numbers
+      toast(hit.exact ? 'Pinned at ' + hit.name + '. If it’s not exactly on your house, press and hold on your roof to move it.'
+        : 'Found the street, not the exact house. Press and hold on your house to pin it exactly.', null, 'info');
     }).catch(function (err) { text('homeNote', err && /Claude app/.test(err.message || '') ? err.message : 'The address lookup didn’t answer. Try again, or use the map center.'); });
   });
   $('btnHomeCenter').addEventListener('click', function () {
@@ -673,7 +850,9 @@
   });
   $('btnHomeGps').addEventListener('click', function () {
     text('homeNote', 'Asking for your location…');
-    navigator.geolocation.getCurrentPosition(function (p) { saveHome(+p.coords.latitude.toFixed(5), +p.coords.longitude.toFixed(5), 'my location'); },
+    navigator.geolocation.getCurrentPosition(function (p) {
+      if (saveHome(+p.coords.latitude.toFixed(5), +p.coords.longitude.toFixed(5), 'My house')) { state.range = 0.5; syncRangeSeg(); toast('Home set from your location (accurate to about ' + Math.round(p.coords.accuracy) + ' m).', null, 'info'); }
+    },
       function () { text('homeNote', 'Location wasn’t shared. Use the search or the map center instead.'); }, { enableHighAccuracy: true, timeout: 10000 });
   });
   $('btnHomeReset').addEventListener('click', function () {
@@ -683,12 +862,15 @@
   });
   // A private link like #home=39.137,-77.284,Home sets home on this device. The part after # never
   // leaves the browser, and it's removed from the address bar once it's been read.
+  // #home= only fills in a device that has no home yet (so a home you fine-tune isn't overwritten
+  // every time a shortcut opens); #sethome= always replaces it.
   function homeFromLink() {
-    var m = /[#&]home=([-0-9.]+),([-0-9.]+)(?:,([^&]*))?/.exec(location.hash || '');
+    var m = /[#&](set)?home=([-0-9.]+),([-0-9.]+)(?:,([^&]*))?/.exec(location.hash || '');
     if (!m) return false;
-    var la = +m[1], lo = +m[2], nm = m[3] ? decodeURIComponent(m[3]).slice(0, 40) : 'Home';
+    var force = !!m[1], la = +m[2], lo = +m[3], nm = m[4] ? decodeURIComponent(m[4]).slice(0, 40) : 'Home';
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     if (!inMapArea(la, lo)) return false;
+    if (!force && lsGet('og-home')) return false;
     lsSet('og-home', JSON.stringify([la, lo, nm]));
     return [la, lo, nm];
   }
@@ -782,10 +964,11 @@
       else if (Math.hypot(fa.x - state.panX, fa.y - state.panY) > state.range * 0.03) { state.panX = fa.x; state.panY = fa.y; }
     }
     if (window.OG_TILES) { var tv = window.OG_TILES.version(); if (tv !== tileVersion && t - lastTileDraw > 250) { tileVersion = tv; lastTileDraw = t; baseKey = ''; } }
-    if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); if (!$('homeForm').hidden) drawCrosshair(); }
+    if (W > 0 && H > 0) { drawBase(); drawTraffic(t); drawHome(t); drawPopPin(); if (!$('homeForm').hidden) drawCrosshair(); }
     if (t - lastPanel > 800) { lastPanel = t; renderPanels(); checkAlerts(); }
     requestAnimationFrame(frame);
   }
+  window.PlaneSight = { state: state }; // read-only peek for troubleshooting
   renderPanels();
   requestAnimationFrame(frame);
 })();

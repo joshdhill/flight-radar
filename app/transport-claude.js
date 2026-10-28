@@ -203,9 +203,21 @@
     hub.onStart(function () { hub.setMode('connecting'); hostLoop(); });
     api.geocode = async function (q) {
       if (!mcp || !everHost) throw new Error('Address search works when this dashboard is open in the Claude app on your PC.');
-      var list = await loadList('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&bounded=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q));
+      // U.S. Census Bureau address data first (places the house number along its block), then OpenStreetMap
+      try {
+        var cj = await load('https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' + encodeURIComponent(q));
+        var m = cj && cj.result && cj.result.addressMatches && cj.result.addressMatches[0];
+        if (m && m.coordinates) {
+          var street = String(m.matchedAddress || '').split(',')[0].toLowerCase().replace(/\b([a-z])/g, function (x) { return x.toUpperCase(); });
+          return { lat: +(+m.coordinates.y).toFixed(6), lon: +(+m.coordinates.x).toFixed(6), name: street, exact: /^\d/.test(street) };
+        }
+      } catch (e) { if (e && (HOSTLESS[e.code] || DECLINED[e.code])) throw e; }
+      var list = await loadList('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&bounded=1&viewbox=-77.85,39.55,-76.70,38.75&q=' + encodeURIComponent(q));
       var h = list && list[0];
-      return h ? { lat: +(+h.lat).toFixed(5), lon: +(+h.lon).toFixed(5), name: String(h.display_name || '').split(',').slice(0, 2).join(',').trim() } : null;
+      if (!h) return null;
+      var a = h.address || {};
+      return { lat: +(+h.lat).toFixed(6), lon: +(+h.lon).toFixed(6), exact: !!a.house_number,
+        name: a.house_number && a.road ? a.house_number + ' ' + a.road : String(h.display_name || '').split(',').slice(0, 2).join(',').trim() };
     };
     // like load(), but for answers that are a JSON list
     async function loadList(url) {

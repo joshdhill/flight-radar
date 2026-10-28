@@ -23,6 +23,9 @@
   --road-major: #2d3d35;
   --road-primary: #1d2a24;
   --road-secondary: #17221d;
+  --road-minor: #17221c;
+  --building: #13201a;
+  --building-edge: rgba(200, 235, 215, 0.09);
   --boundary: rgba(200, 235, 215, 0.16);
   --label: #6f8378;
   --label-strong: #b2c4b9;
@@ -46,6 +49,7 @@
 [hidden] { display: none !important; }
 html { background: var(--bg); }
 body {
+  margin: 0;
   background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45;
   padding-block: 18px 28px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -74,7 +78,7 @@ button { font: inherit; color: inherit; }
 /* stage */
 .stage { position: relative; display: flex; flex-direction: column; gap: 12px; }
 .mapwrap { position: relative; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--land); height: clamp(560px, calc(100vh - 120px), 1000px); }
-#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: manipulation; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #map.dragging { cursor: grabbing; }
 .glass { background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.1); backdrop-filter: blur(14px) saturate(1.1); border: 1px solid var(--line); border-radius: 14px; }
 .hud-stats { position: absolute; top: 14px; left: 14px; z-index: 2; display: flex; padding: 10px 6px; margin: 0; }
@@ -155,17 +159,79 @@ button { font: inherit; color: inherit; }
 .follow span { font-family: var(--font-mono); color: var(--fg); }
 .foot { font-size: 11px; color: var(--fg-faint); margin: 6px 0 0; }
 
+/* closest-military button (always on the map) */
+.mil-fab { position: absolute; z-index: 2; top: 92px; left: 14px; display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px 8px 12px; border-radius: 999px; cursor: pointer; color: var(--fg); border-color: rgba(242, 227, 160, 0.35); }
+.mil-fab i { width: 10px; height: 10px; background: var(--mil); transform: rotate(45deg); border-radius: 2px; flex: none; }
+.mil-fab .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-muted); white-space: nowrap; }
+.mil-fab b { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; color: var(--mil); }
+.mil-fab:hover { border-color: var(--mil); }
+.mil-fab:disabled { opacity: 0.55; cursor: default; }
+.mil-fab:disabled b { color: var(--fg-muted); }
+.mil-fab.near i { box-shadow: 0 0 0 3px rgba(242, 227, 160, 0.25); animation: blink 1.4s ease-in-out infinite; }
+.mini-sel, .peek { display: none; }
+.home-pop { position: absolute; z-index: 4; padding: 10px 12px; border-radius: 12px; border-color: var(--line-strong); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.home-pop p { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.home-pop-actions { display: flex; gap: 8px; }
+.home-pop .btn { padding: 7px 12px; font-size: 13px; }
+
+/* military search and filters */
+.miltools { margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.miltools input { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(235, 248, 240, 0.05); color: var(--fg); font: inherit; font-size: 13px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--fg-muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.chips button .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-faint); }
+.chips button .n:empty { display: none; }
+.chips button[aria-pressed="true"] { background: var(--mil); border-color: var(--mil); color: var(--bg); font-weight: 700; }
+.chips button[aria-pressed="true"] .n { color: rgba(5, 11, 8, 0.6); }
+.row.coming { box-shadow: inset 3px 0 0 var(--mil); }
+.row.coming .num:last-child { color: var(--mil); }
+.toast.info { border-color: var(--line-strong); }
+.toast.info::before { content: none; }
+
+/* phones and tablets: the map fills the whole screen; everything else is below it */
 @media (max-width: 1000px) {
-  .mapwrap { height: auto; aspect-ratio: 1 / 1.12; max-width: 100%; }
-  .hud-stats, .hud-ctrl, .overlay { position: static; width: auto; }
-  .hud-stats { order: -1; justify-content: space-between; }
-  .attrib { position: static; order: 3; pointer-events: auto; }
-  .hud-ctrl { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; }
-  .overlay .rows { max-height: 360px; }
+  html:not(.embedded) body, body { padding: 0 !important; }
+  .app { gap: 0; position: relative; }
+  .top { position: absolute; z-index: 6; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 12px; right: 12px; flex-wrap: nowrap; align-items: center; pointer-events: none; }
+  .top > * { pointer-events: auto; }
+  .title h1 { font-size: 21px; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75); }
+  .title p, .clock { display: none; }
+  .pill { background: var(--glass); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); font-size: 11px; padding: 5px 10px 5px 9px; }
+  .stage { display: block; }
+  .mapwrap { height: 100vh; height: 100svh; aspect-ratio: auto; max-width: none; border: 0; border-radius: 0; }
+  .hud-stats { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 10px; right: 10px; width: auto; padding: 7px 2px; justify-content: space-between; }
+  .stat { flex: 1 1 0; padding: 1px 8px; }
+  .stat .k { font-size: 9px; letter-spacing: 0.07em; white-space: nowrap; }
+  .stat .v { font-size: 18px; }
+  .stat .v small { font-size: 9.5px; }
+  .hud-ctrl { position: absolute; top: auto; left: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 42px); width: auto; padding: 6px; flex-direction: row; }
+  .alt-scale, .follow, .seg .nm { display: none !important; }
+  .seg button { padding: 7px 8px; font-size: 12.5px; }
+  .icon-btn { width: 34px; height: 32px; }
+  .mil-fab { top: auto; left: auto; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 42px); flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 10px 6px 24px; border-radius: 14px; max-width: calc(100% - 214px); }
+  .mil-fab b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .mil-fab i { position: absolute; left: 10px; top: 50%; margin-top: -5px; }
+  .mil-fab .k { font-size: 9px; }
+  .mil-fab b { font-size: 12px; }
+  .mini-sel { display: flex; position: absolute; z-index: 2; left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 94px); align-items: center; gap: 10px; padding: 9px 12px; text-align: left; cursor: pointer; color: var(--fg); }
+  .mini-sel[hidden] { display: none; }
+  .mini-sel.mil { border-color: rgba(242, 227, 160, 0.45); }
+  .ms-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .ms-main b { font-family: var(--font-mono); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-main small { font-size: 11.5px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-num { flex: none; font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+  .peek { display: flex; position: absolute; z-index: 2; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); flex-direction: column; align-items: center; gap: 3px; padding: 4px 16px 2px; border: 0; background: none; color: var(--fg-muted); font-size: 11px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); cursor: pointer; }
+  .peek .grab { width: 38px; height: 4px; border-radius: 2px; background: rgba(230, 240, 234, 0.55); }
+  .attrib { position: static; padding: 8px 14px 0; pointer-events: auto; }
+  .overlay { position: static; width: auto; padding: 12px; }
+  .overlay .rows { max-height: none; overflow: visible; }
+  .home-search input, .miltools input { font-size: 16px; } /* 16px keeps iPhone from zooming the page while typing */
+  html body .toast { top: calc(env(safe-area-inset-top, 0px) + 116px); }
 }
 @media (max-width: 520px) {
-  .stat { padding: 2px 10px; }
-  .stat .v { font-size: 19px; }
+  .stat { padding: 1px 6px; }
+  .stat .v { font-size: 17px; }
   .sel-call { font-size: 26px; }
   .alt-scale { width: 100%; }
 }

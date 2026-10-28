@@ -34,32 +34,46 @@
 
   <section class="stage">
     <div class="mapwrap">
-      <canvas id="map" role="img" aria-label="Night map centered on home showing aircraft, their routes and trails"></canvas>
-    </div>
+      <canvas id="map" role="img" aria-label="Night map centered on home showing aircraft, their routes and trails. Pinch or scroll to zoom, drag to move, press and hold to set home."></canvas>
 
-    <div class="glass hud-stats" role="group" aria-label="Summary">
-      <button type="button" class="stat" id="tileInView" title="Tap to step through the planes in view"><span class="k">In view</span><span class="v"><span id="stInView">–</span></span></button>
-      <button type="button" class="stat" id="tileNearest" title="Tap to center on the nearest plane"><span class="k">Nearest</span><span class="v"><span id="stNearest">–</span><small>nm</small></span></button>
-      <button type="button" class="stat" id="tileMil" title="Tap to step through military aircraft"><span class="k">Military</span><span class="v"><span id="stMil">–</span><small>in 250 nm</small></span></button>
-      <button type="button" class="stat" id="tilePasses" title="Tap to see today's passes"><span class="k">Passes today</span><span class="v"><span id="stPasses">–</span></span></button>
-    </div>
-
-    <div class="glass hud-ctrl">
-      <div class="ctrl-row">
-        <div class="seg" id="rangeSeg" role="group" aria-label="Zoom">
-          <button type="button" data-range="5" aria-pressed="false">5</button>
-          <button type="button" data-range="10" aria-pressed="true">10</button>
-          <button type="button" data-range="25" aria-pressed="false">25</button>
-          <button type="button" data-range="250" aria-pressed="false" title="Zoom out to the whole 250 nm military area">250 nm</button>
-        </div>
-        <button type="button" class="btn icon-btn" id="btnCenter" aria-label="Recenter on home" title="Recenter on home and stop following">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M7 0v3M7 11v3M0 7h3M11 7h3" stroke="currentColor" stroke-width="1.4"/></svg>
-        </button>
+      <div class="glass hud-stats" role="group" aria-label="Summary">
+        <button type="button" class="stat" id="tileInView" title="Tap to step through the planes in view"><span class="k">In view</span><span class="v"><span id="stInView">–</span></span></button>
+        <button type="button" class="stat" id="tileNearest" title="Tap to center on the nearest plane"><span class="k">Nearest</span><span class="v"><span id="stNearest">–</span><small>nm</small></span></button>
+        <button type="button" class="stat" id="tileMil" title="Tap to step through military aircraft"><span class="k">Military</span><span class="v"><span id="stMil">–</span><small>in 250 nm</small></span></button>
+        <button type="button" class="stat" id="tilePasses" title="Tap to see today's passes"><span class="k">Passes today</span><span class="v"><span id="stPasses">–</span></span></button>
       </div>
-      <div class="follow" id="followBar" hidden><span id="followText">Following</span><button type="button" class="linkbtn" id="btnStopFollow">Stop</button></div>
-      <div class="alt-scale" aria-label="Altitude color scale">
-        <div class="bar"></div>
-        <div class="ticks"><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k ft</span></div>
+
+      <button type="button" class="glass mil-fab" id="btnClosestMil" title="Jump to the closest military aircraft and follow it">
+        <i aria-hidden="true"></i><span class="k">Closest military</span><b id="closestMilText">–</b>
+      </button>
+
+      <div class="glass hud-ctrl">
+        <div class="ctrl-row">
+          <div class="seg" id="rangeSeg" role="group" aria-label="Zoom">
+            <button type="button" data-range="5" aria-pressed="false">5</button>
+            <button type="button" data-range="10" aria-pressed="true">10</button>
+            <button type="button" data-range="25" aria-pressed="false">25</button>
+            <button type="button" data-range="250" aria-pressed="false" title="Zoom out to the whole 250 nm military area">250<span class="nm"> nm</span></button>
+          </div>
+          <button type="button" class="btn icon-btn" id="btnCenter" aria-label="Recenter on home" title="Recenter on home and stop following">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M7 0v3M7 11v3M0 7h3M11 7h3" stroke="currentColor" stroke-width="1.4"/></svg>
+          </button>
+        </div>
+        <div class="follow" id="followBar" hidden><span id="followText">Following</span><button type="button" class="linkbtn" id="btnStopFollow">Stop</button></div>
+        <div class="alt-scale" aria-label="Altitude color scale">
+          <div class="bar"></div>
+          <div class="ticks"><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k ft</span></div>
+        </div>
+      </div>
+
+      <button type="button" class="glass mini-sel" id="miniSel" hidden>
+        <span class="ms-main"><b id="msCall"></b><small id="msSub"></small></span><span class="ms-num" id="msNum"></span>
+      </button>
+      <button type="button" class="peek" id="btnPeek"><span class="grab" aria-hidden="true"></span>Details and lists</button>
+
+      <div class="glass home-pop" id="homePop" hidden role="dialog" aria-label="Set home">
+        <p>Set home here?</p>
+        <div class="home-pop-actions"><button type="button" class="btn primary" id="btnPopSet">Set home</button><button type="button" class="btn" id="btnPopCancel">Cancel</button></div>
       </div>
     </div>
 
@@ -105,6 +119,20 @@
           <button type="button" data-tab="mil" aria-pressed="false">Military<span class="count" id="milCount"></span></button>
           <button type="button" data-tab="passes" aria-pressed="false">Passes</button>
         </div>
+        <div class="miltools" id="milTools" hidden>
+          <label for="milSearch" class="visually-hidden">Search military aircraft</label>
+          <input id="milSearch" type="search" autocomplete="off" placeholder="Search callsign, aircraft or branch">
+          <div class="chips" id="milChips" role="group" aria-label="Filter military aircraft">
+            <button type="button" data-f="all" aria-pressed="true">All</button>
+            <button type="button" data-f="inbound" aria-pressed="false">Coming my way</button>
+            <button type="button" data-f="heli" aria-pressed="false">Helicopters</button>
+            <button type="button" data-f="army" aria-pressed="false">Army</button>
+            <button type="button" data-f="af" aria-pressed="false">Air Force</button>
+            <button type="button" data-f="navy" aria-pressed="false">Navy</button>
+            <button type="button" data-f="usmc" aria-pressed="false">Marines</button>
+            <button type="button" data-f="uscg" aria-pressed="false">Coast Guard</button>
+          </div>
+        </div>
         <div class="subbar">
           <h2 class="eyebrow" id="listTitle">In view</h2>
           <button type="button" class="linkbtn" id="btnAlerts" aria-pressed="false" hidden>Alert me</button>
@@ -128,7 +156,7 @@
             <button type="button" class="btn" id="btnHomeGps">Use my location</button>
             <button type="button" class="linkbtn" id="btnHomeReset">Reset</button>
           </div>
-          <p class="foot" id="homeNote">Search an address, or drag the map so the crosshair sits on your house and tap Use map center. Saved in this browser.</p>
+          <p class="foot" id="homeNote">Most exact: tap Use my location while you're at home. Or search your address, then zoom in and press and hold on your house to fine-tune. Saved in this browser.</p>
         </form>
       </section>
     </aside>
