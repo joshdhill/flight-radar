@@ -172,15 +172,15 @@
     var zw = R < 2 ? Math.min(5, 2 / R) : 1; // roads widen as you zoom in to street level
     if (R <= 60) fillSet(g, M.wood, col['wood']);
     if (R <= 60) fillSet(g, M.park, col['park']);
-    if (R <= 6) strokeSet(g, M.stream, col['river'], 0.8 * zw);
-    strokeSet(g, M.river, col['river'], 1.4 * z * zw);
+    if (R <= 6) strokeSet(g, M.stream, col['river'], 0.8 * Math.min(zw, 1.5));
+    strokeSet(g, M.river, col['river'], 1.4 * z * Math.min(zw, 2));
     fillSet(g, M.water, col['water']);
     dashSet(g, M.boundary, col['boundary'], 1);
     if (R <= 1.2 && M.buildings.length) {
       fillSet(g, vis(M.buildings, vb), col['building']);
       if (R <= 0.6) strokeSet(g, vis(M.buildings, vb), col['building-edge'], 0.8);
     }
-    if (R <= 2.5) strokeSet(g, M.minor, col['road-minor'], 1.1 * zw);
+    if (R <= 2.5) strokeSet(g, M.minor, col['road-minor'], Math.min(9, 1.1 * zw));
     if (R <= 6) strokeSet(g, M.secondary, col['road-secondary'], 0.9 * zw);
     if (R <= 30) strokeSet(g, M.primary, col['road-primary'], 1.1 * z * zw);
     strokeSet(g, M.major, col['road-major'], (R > 60 ? 1.2 : 1.7) * z * zw);
@@ -253,29 +253,32 @@
     }
   }
 
-  // Street names along the longest visible stretch of each street.
+  // Street names, centered on each street's longest visible stretch and tilted along it.
   function drawStreetNames(g, names, free) {
     var best = {};
     names.forEach(function (n) {
-      var pts = n[1];
-      for (var i = 1; i < pts.length; i++) {
-        var a = proj(pts[i - 1][0], pts[i - 1][1]), b = proj(pts[i][0], pts[i][1]);
-        var len = Math.hypot(b[0] - a[0], b[1] - a[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-        if (mx < 10 || my < 10 || mx > W - 10 || my > H - 10) continue;
-        if (!best[n[0]] || len > best[n[0]].len) best[n[0]] = { len: len, a: a, b: b, x: mx, y: my };
-      }
+      var pts = n[1].map(function (q) { return proj(q[0], q[1]); }), cum = [0];
+      for (var i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      var len = cum[cum.length - 1];
+      if (!best[n[0]] || len > best[n[0]].len) best[n[0]] = { len: len, pts: pts, cum: cum };
     });
-    g.font = '10.5px "B612", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    function at(s, d) { // point at distance d along the line
+      for (var i = 1; i < s.cum.length; i++) if (s.cum[i] >= d) { var f = (d - s.cum[i - 1]) / Math.max(1e-6, s.cum[i] - s.cum[i - 1]); return [s.pts[i - 1][0] + (s.pts[i][0] - s.pts[i - 1][0]) * f, s.pts[i - 1][1] + (s.pts[i][1] - s.pts[i - 1][1]) * f]; }
+      return s.pts[s.pts.length - 1];
+    }
+    g.font = '600 11px "B612", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     Object.keys(best).forEach(function (name) {
       var s = best[name], tw = g.measureText(name).width;
-      if (s.len < tw + 12) return;
-      var ang = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
+      if (s.len < tw + 16) return;
+      var mid = at(s, s.len / 2), a = at(s, s.len / 2 - tw / 2), b = at(s, s.len / 2 + tw / 2);
+      if (mid[0] < 20 || mid[1] < 20 || mid[0] > W - 20 || mid[1] > H - 20) return;
+      var ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
       if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
-      var bw = Math.abs(Math.cos(ang)) * tw + Math.abs(Math.sin(ang)) * 12, bh = Math.abs(Math.sin(ang)) * tw + Math.abs(Math.cos(ang)) * 12;
-      if (!free(s.x - bw / 2, s.y - bh / 2, bw, bh)) return;
-      g.save(); g.translate(s.x, s.y); g.rotate(ang);
-      g.lineWidth = 3; g.strokeStyle = col['land']; g.lineJoin = 'round'; g.strokeText(name, 0, 0);
-      g.fillStyle = col['label']; g.fillText(name, 0, 0); g.restore();
+      var bw = Math.abs(Math.cos(ang)) * tw + Math.abs(Math.sin(ang)) * 13, bh = Math.abs(Math.sin(ang)) * tw + Math.abs(Math.cos(ang)) * 13;
+      if (!free(mid[0] - bw / 2, mid[1] - bh / 2, bw, bh)) return;
+      g.save(); g.translate(mid[0], mid[1]); g.rotate(ang);
+      g.lineWidth = 3.5; g.strokeStyle = col['land']; g.lineJoin = 'round'; g.strokeText(name, 0, 0);
+      g.fillStyle = col['label-strong']; g.globalAlpha = 0.85; g.fillText(name, 0, 0); g.restore();
     });
   }
   function drawHouseNumbers(g, nums, free) {

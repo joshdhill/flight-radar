@@ -23,9 +23,9 @@
   --road-major: #2d3d35;
   --road-primary: #1d2a24;
   --road-secondary: #17221d;
-  --road-minor: #17221c;
-  --building: #13201a;
-  --building-edge: rgba(200, 235, 215, 0.09);
+  --road-minor: #26352d;
+  --building: #17271f;
+  --building-edge: rgba(200, 235, 215, 0.12);
   --boundary: rgba(200, 235, 215, 0.16);
   --label: #6f8378;
   --label-strong: #b2c4b9;
