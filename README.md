@@ -26,10 +26,14 @@ The flight feeds don't allow web pages to call them directly, so the two small f
 
 ## Using it
 
-- **Zoom:** 5, 10, 25 or 250 nm buttons, or scroll. At 250 nm ordinary traffic shrinks to small marks so military aircraft stand out.
-- **Tiles at the top:** In view steps through the planes near you, Nearest centers and follows the closest one, Military steps through military aircraft and follows each, Passes opens today's log.
-- **Change home:** search an address, use your location, or drag the map so the crosshair is on your house and tap Use map center. Saved in that browser only, so set it once per device.
-- **Private home link:** opening the site as `…/#home=LAT,LON,Name` sets home on that device in one step. The part after `#` never leaves the browser and is removed from the address bar once read, so the public site never shows anyone's house.
+- **Zoom:** pinch, scroll, double-tap, or the 5, 10, 25 and 250 nm buttons. Zoom goes from the 250 nm military area down to street level, where streets, street names, buildings and house numbers appear. At 250 nm ordinary traffic shrinks to small marks so military aircraft stand out.
+- **Move:** drag the map. Dragging stops following a plane; the target button recenters on home.
+- **Tiles at the top:** In view steps through the planes near you, Nearest centers and follows the closest one, Military steps through military aircraft (using the Military tab's filter) and follows each, Passes opens today's log.
+- **Closest military:** the button on the map always jumps to the nearest military aircraft and follows it.
+- **Set home:** press and hold on your house (right-click on a computer) and tap Set home. Or open Change home and use your location, search an address (the search puts the pin on the house itself when OpenStreetMap knows the house number, otherwise uses U.S. Census Bureau address data), or drag the crosshair and tap Use map center. Saved in that browser only, so set it once per device.
+- **Private home link:** opening the site as `…/#home=LAT,LON,Name` sets home on a device that doesn't have one yet; `#sethome=` replaces it. The part after `#` never leaves the browser and is removed from the address bar once read, so the public site never shows anyone's house.
+
+**On a phone** the map fills the screen. The title, stats and controls float on it, a small card shows the plane you picked, and the details and lists are below: scroll down or tap "Details and lists".
 
 ## On your phone
 
@@ -52,7 +56,7 @@ Vercel gives you an address like `flight-radar-joshdhill.vercel.app`. Every push
 Also:
 
 - **Detection** uses three signals: the military flag in the aircraft database that adsb.lol publishes, the US military block of transponder addresses (AE0000–AFFFFF), and well-known military callsigns.
-- **The Military tab** lists every military aircraft broadcasting within 250 nm, nearest first, with model and branch. Tap one to jump the map to it.
+- **The Military tab** lists every military aircraft broadcasting within 250 nm, nearest first, with model and branch. Search by callsign, aircraft or branch, or filter: Coming my way (headed within 10 nm of home, soonest first), Helicopters, or one branch. Tap one to jump the map to it.
 - **Passes** keeps every flight that came within 5 nm, with a "Military only" filter. Military passes keep the branch and model.
 - **Map edge arrows** point to military aircraft outside the current view, with their distance.
 - **Emergency squawks** (7500, 7600, 7700) get a pulsing red ring and a badge.
