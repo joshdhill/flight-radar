@@ -1,5 +1,7 @@
 // Shared server code for /api/planes and /api/military.
 // Files in api/ that start with "_" are not deployed as their own endpoints on Vercel.
+// These functions only pass the community feed through (the feeds don't allow calls straight from a
+// web page). Routes and aircraft details are looked up by the page itself, so each call stays short.
 
 export const HOME = { lat: 39.1732, lon: -77.2717 };
 const UA = 'plane-sight/1.0 (personal flight dashboard; github.com/joshdhill/flight-radar)';
@@ -12,8 +14,6 @@ const SOURCES = [
   { name: 'adsb.fi', point: (la, lo, r) => `https://opendata.adsb.fi/api/v2/lat/${la}/lon/${lo}/dist/${r}`, mil: 'https://opendata.adsb.fi/api/v2/mil' },
 ];
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 async function getJson(url, timeoutMs) {
   const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
   const text = await res.text();
@@ -22,21 +22,17 @@ async function getJson(url, timeoutMs) {
   return JSON.parse(text);
 }
 
-// Try each source in turn. adsb.lol gets one retry because it is occasionally slow.
+// Try each source in turn; the page retries on its own, so no second try here (keeps each call short).
 export async function fetchFeed(kind, lat, lon, radius) {
   const errors = [];
   for (let i = 0; i < SOURCES.length; i++) {
     const s = SOURCES[i];
     const url = kind === 'mil' ? s.mil : s.point(lat, lon, radius);
-    const tries = i === 0 ? 2 : 1;
-    for (let t = 0; t < tries; t++) {
-      try {
-        const j = await getJson(url, i === 0 ? 12000 : 8000);
-        return { source: s.name, now: j.now || Date.now(), ac: j.ac || j.aircraft || [] };
-      } catch (e) {
-        errors.push(e.message);
-        if (t + 1 < tries) await sleep(1200);
-      }
+    try {
+      const j = await getJson(url, i === 0 ? 8000 : 6000);
+      return { source: s.name, now: j.now || Date.now(), ac: j.ac || j.aircraft || [] };
+    } catch (e) {
+      errors.push(e.message);
     }
   }
   throw new Error(errors.join('; '));
@@ -81,101 +77,25 @@ export function compactRow(a, route) {
   ];
 }
 
-/* ---------- routes (cached per callsign, checked against where the plane is) ---------- */
-// A callsign can fly several legs a day, and route databases are sometimes out of date,
-// so a route is only shown when the plane's current position lies along it.
-const routeCache = new Map(); // callsign -> { at, legs: [[codeA, latA, lonA, codeB, latB, lonB], ...] }
-export const routeStats = { vrsCalls: 0, vrsKnown: 0, adsbdbCalls: 0, cached: 0 };
-const ROUTE_HIT_MS = 6 * 3600e3, ROUTE_MISS_MS = 3600e3;
-export function looksLikeAirline(cs) { return /^[A-Z]{3}[0-9][0-9A-Z]{0,4}$/.test(cs || '') && !MIL_CALLSIGNS.test(cs); }
-const R_NM = 3440.065;
-function angDist(lat1, lon1, lat2, lon2) { return distanceNm(lat1, lon1, lat2, lon2) / R_NM; }
-function bearingRad(lat1, lon1, lat2, lon2) {
-  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
-  return Math.atan2(y, x);
-}
-// Is (lat, lon) near the great-circle leg from A to B?
-export function onLeg(lat, lon, leg) {
-  const [, aLat, aLon, , bLat, bLon] = leg;
-  if (![aLat, aLon, bLat, bLon].every(Number.isFinite)) return false;
-  if (distanceNm(lat, lon, aLat, aLon) < 60 || distanceNm(lat, lon, bLat, bLon) < 60) return true;
-  const d13 = angDist(aLat, aLon, lat, lon), d12 = angDist(aLat, aLon, bLat, bLon);
-  const delta = bearingRad(aLat, aLon, lat, lon) - bearingRad(aLat, aLon, bLat, bLon);
-  const xt = Math.asin(Math.sin(d13) * Math.sin(delta));
-  const at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xt)))) * (Math.cos(delta) < 0 ? -1 : 1);
-  return Math.abs(xt) * R_NM < 150 && at * R_NM > -60 && at * R_NM < d12 * R_NM + 60;
-}
-function fresh(c, now) { return c && now - c.at < (c.legs.length ? ROUTE_HIT_MS : ROUTE_MISS_MS); }
-
-async function lookupAdsbdb(cs) {
-  try {
-    const j = await getJson(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, 4000);
-    const f = j.response && j.response.flightroute, o = f && f.origin, d = f && f.destination;
-    const legs = o && d ? [[o.iata_code || o.icao_code, o.latitude, o.longitude, d.iata_code || d.icao_code, d.latitude, d.longitude]] : [];
-    routeCache.set(cs, { at: Date.now(), legs });
-  } catch {
-    routeCache.set(cs, { at: Date.now(), legs: [] });
-  }
-}
-
-// adsb.lol publishes its route database (from the Virtual Radar Server project) as one small
-// static file per callsign. Returns true when the file had a route.
-async function lookupVrs(cs) {
-  try {
-    const x = await getJson(`https://vrs-standing-data.adsb.lol/routes/${encodeURIComponent(cs.slice(0, 2))}/${encodeURIComponent(cs)}.json`, 4000);
-    const ap = Array.isArray(x._airports) ? x._airports : [];
-    if (ap.length < 2) return false;
-    const legs = [];
-    for (let i = 0; i + 1 < ap.length; i++) {
-      const a = ap[i], b = ap[i + 1];
-      legs.push([a.iata || a.icao, +a.lat, +a.lon, b.iata || b.icao, +b.lat, +b.lon]);
-    }
-    routeCache.set(cs, { at: Date.now(), legs });
-    routeStats.vrsKnown++;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// planes: [{ cs, lat, lon }] -> { callsign: "IAD-ORD" } for routes that fit the plane's position
-export async function routesFor(planes, maxNew = 30, maxAdsbdb = 6) {
-  const now = Date.now();
-  const need = planes.filter((p) => looksLikeAirline(p.cs) && !fresh(routeCache.get(p.cs), now)).slice(0, maxNew);
-  if (need.length) {
-    routeStats.vrsCalls += need.length;
-    const found = await Promise.all(need.map((p) => lookupVrs(p.cs)));
-    const rest = need.filter((p, i) => !found[i]).slice(0, maxAdsbdb);
-    routeStats.adsbdbCalls += rest.length;
-    await Promise.all(rest.map((p) => lookupAdsbdb(p.cs)));
-  }
-  routeStats.cached = routeCache.size;
-  const out = {};
-  for (const p of planes) {
-    const c = routeCache.get(p.cs);
-    const leg = c && c.legs.find((l) => onLeg(p.lat, p.lon, l));
-    if (leg) out[p.cs] = `${leg[0]}-${leg[3]}`;
-  }
-  return out;
-}
-
 /* ---------- helpers ---------- */
 export function homeFrom(url) {
   const u = new URL(url);
   let lat = parseFloat(u.searchParams.get('lat')), lon = parseFloat(u.searchParams.get('lon'));
-  // home can be anywhere; anything that isn't a valid position falls back to Germantown
+  // home can be anywhere; anything that isn't a valid position falls back to Germantown.
+  // Two decimals (about half a mile) is plenty for a 30 nm search, and keeps the exact spot private.
   if (!Number.isFinite(lat) || Math.abs(lat) > 85 || !Number.isFinite(lon) || Math.abs(lon) > 180) { lat = HOME.lat; lon = HOME.lon; }
-  return { lat: +lat.toFixed(3), lon: +lon.toFixed(3) };
+  return { lat: +lat.toFixed(2), lon: +lon.toFixed(2) };
 }
 
-export function json(body, { status = 200, sMaxAge = 5 } = {}) {
+// The CDN keeps each answer for a few seconds, so every screen with the same home shares one fetch.
+// Pages move planes along between updates, so a few seconds of age doesn't show.
+export function json(body, { status = 200, sMaxAge = 8 } = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      // Short CDN cache so several screens share one fetch, without serving old positions.
-      'cache-control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=${Math.min(sMaxAge, 10)}`,
+      // browsers always ask again (max-age=0); the CDN answers repeat asks for a few seconds
+      'cache-control': `public, max-age=0, s-maxage=${sMaxAge}`,
     },
   });
 }

@@ -47,3 +47,46 @@ The page only loads images listed here, so the browser doesn't ask for files tha
   "types": ["B738", "H60"]
 }
 ```
+
+## Flyby illustrations (the big military card)
+
+When a military aircraft passes close, Plane Sight shows a large card with a side-view illustration of it crossing a night sky. Built-in drawings cover every family of aircraft. A painted image replaces the drawing for that type.
+
+**Spec**
+
+- **Side view, nose pointing right**, level flight. The page flips it automatically when the aircraft is flying west.
+- **Transparent PNG, 1280 × 520 px** (the card shows it at about 620 × 250). Keep the aircraft inside the middle 85%, with the rotor tips of helicopters inside the frame.
+- **No background, no ground shadow.** The card supplies the sky, clouds and a soft drop shadow.
+- Paint it the way that branch flies it around here (olive-drab Army Black Hawks, the Air Force's blue-and-white Hueys, red-orange Coast Guard Dolphins, white-and-blue VIP jets). Don't include real squadron emblems or tail numbers.
+- Same light direction (from the upper left) across the set.
+
+Name each file with the ICAO type code, put it in `sprites/hero/`, and list the code under `hero` in `manifest.json`:
+
+```
+sprites/hero/H60.png    UH-60 Black Hawk (the most common one over Germantown)
+sprites/hero/B212.png   UH-1N Twin Huey (Air Force, Joint Base Andrews)
+sprites/hero/AS65.png   MH-65 Dolphin (Coast Guard)
+sprites/hero/C17.png    C-17 Globemaster III
+sprites/hero/C5M.png    C-5M Super Galaxy
+sprites/hero/K35R.png   KC-135 Stratotanker
+sprites/hero/C30J.png   C-130J Super Hercules
+sprites/hero/V22.png    V-22 Osprey
+sprites/hero/B752.png   C-32 (Air Force Two's 757)
+sprites/hero/GLF5.png   C-37 Gulfstream
+sprites/hero/BE20.png   C-12 Huron
+sprites/hero/H64.png    AH-64 Apache
+sprites/hero/H47.png    CH-47 Chinook
+sprites/hero/F16.png    F-16 Fighting Falcon
+```
+
+You can also name a file after a drawing family instead of a type (`heli-utility`, `heli-huey`, `heli-light`, `heli-attack`, `heli-tandem`, `tiltrotor`, `airlifter`, `turboprop`, `tanker`, `jet`, `bizjet`, `twinprop`, `fighter`, `drone`), and it's used for every type in that family that has no image of its own.
+
+```json
+{
+  "classes": [],
+  "types": [],
+  "hero": ["H60", "B212", "AS65"]
+}
+```
+
+The Claude dashboard can't load image files, so it always uses the built-in drawings.

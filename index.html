@@ -24,7 +24,7 @@
   <header class="top">
     <div class="title">
       <h1>Plane Sight</h1>
-      <p id="coords">39.1732°N 77.2717°W</p>
+      <p id="coords">39.17°N 77.27°W</p>
     </div>
     <div class="status">
       <span class="pill" id="pill" data-state="connecting" role="status"><i></i><span id="pillText">Connecting</span></span>
@@ -75,6 +75,7 @@
               <p class="sel-more" id="selRouteMore"></p>
               <p class="sel-type" id="selType">Waiting for aircraft</p>
               <p class="sel-note" id="selNote"></p>
+              <button type="button" class="linkbtn sel-brief" id="btnBrief" hidden>Open briefing</button>
             </div>
             <div class="badges" id="selBadges"></div>
           </div>
@@ -107,6 +108,7 @@
         <div class="subbar">
           <h2 class="eyebrow" id="listTitle">In view</h2>
           <button type="button" class="linkbtn" id="btnAlerts" aria-pressed="false" hidden>Alert me</button>
+          <button type="button" class="linkbtn" id="btnMilOnly" aria-pressed="false" hidden>Military only</button>
         </div>
         <ul class="rows" id="list"></ul>
         <ul class="rows" id="milList" hidden></ul>
@@ -135,6 +137,9 @@
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="app/core.js"></script>
 <script src="app/sprites.js"></script>
+<script src="app/milinfo.js"></script>
+<script src="app/milart.js"></script>
+<script src="app/flyby.js"></script>
 <script src="app/basemap-tiles.js"></script>
 <script src="app/transport-web.js"></script>
 <script src="app/ui.js"></script>

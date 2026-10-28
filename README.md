@@ -5,26 +5,31 @@ Everything flying over Germantown, Maryland, in plain sight: a live night map of
 ## How the live data flows
 
 ```
-browser (any device)                         Vercel functions (this repo's api/ folder)
-────────────────────                         ──────────────────────────────────────────
-every 10 s:  GET /api/planes      ────────▶  adsb.lol, 30 nm around home
-                                             (falls back to airplanes.live, then adsb.fi)
-                                             + routes (adsb.lol route files, adsbdb fallback),
-                                               cached 6 h per callsign, shown only if the
-                                               plane is actually along that route
-every 60 s:  GET /api/military    ────────▶  adsb.lol /v2/mil, kept to 250 nm around home
-             ◀──────────────────────────────  compact JSON rows
-draws the map 60× a second, moving each plane
-forward along its heading and speed between updates
+browser (any device)                          Vercel functions (this repo's api/ folder)
+────────────────────                          ──────────────────────────────────────────
+GET /api/planes  every 10 s while you're      adsb.lol, 30 nm around home
+  using it (20 s when it's just sitting       (falls back to airplanes.live, then adsb.fi)
+  open, 60 s in a background tab)  ───────▶
+GET /api/military  every 60 s     ───────▶    adsb.lol /v2/mil, kept to 250 nm around home
+                  ◀───────────────────────    compact JSON rows
+
+routes and aircraft details come straight from adsb.lol's route files and adsbdb,
+looked up by the page itself and kept in the browser for 12 hours
+draws the map 60× a second, moving each plane along its heading between updates
 ```
 
-The flight feeds don't allow web pages to call them directly, so the two small functions in `api/` fetch for the page. Each response is cached for a few seconds, so several screens share one upstream request.
+The flight feeds don't allow web pages to call them directly, so the two small functions in `api/` fetch for the page. They do nothing else, so each call is short. The CDN keeps each answer for 8 seconds, so every screen with the same home shares one fetch.
+
+**What it costs to run:** nothing. The site runs on Vercel's free Hobby plan and uses no Claude tokens. It only runs while a page is open. One screen left open all day and night makes about 6,000 short function calls a day, inside the free monthly allowance (1 million calls, 360 GB-hours of memory, 4 hours of CPU).
+
+**Privacy:** the page sends your home to its own functions rounded to two decimals (about half a mile). The exact spot stays in your browser.
 
 ## Using it
 
 - **Zoom:** 5, 10, 25 or 250 nm buttons, or scroll. At 250 nm ordinary traffic shrinks to small marks so military aircraft stand out.
 - **Tiles at the top:** In view steps through the planes near you, Nearest centers and follows the closest one, Military steps through military aircraft and follows each, Passes opens today's log.
 - **Change home:** search an address, use your location, or drag the map so the crosshair is on your house and tap Use map center. Saved in that browser only, so set it once per device.
+- **Private home link:** opening the site as `…/#home=LAT,LON,Name` sets home on that device in one step. The part after `#` never leaves the browser and is removed from the address bar once read, so the public site never shows anyone's house.
 
 ## On your phone
 
@@ -36,20 +41,23 @@ Open the site in Safari, tap Share → **Add to Home Screen**. It opens full scr
 2. Click **Add New… → Project**, find **flight-radar** and click **Import**.
 3. Leave every setting as it is and click **Deploy**.
 
-Vercel gives you an address like `flight-radar-joshdhill.vercel.app`. Every push to `main` redeploys automatically. Anyone with the address can open the page; the home pin it centers on is Germantown in general, and a pin you move is saved only in your own browser.
+Vercel gives you an address like `flight-radar-joshdhill.vercel.app`. Every push to `main` redeploys automatically. Anyone with the address can open the page; the home pin it centers on is Germantown in general, and a home you set is saved only in your own browser.
 
 ## Military tracking
 
-What the page does:
+**The flyby card.** When a military aircraft is about to pass within 3.5 nm of home (or is already within 3 nm), a big card slides up over the map: an illustration of the aircraft crossing a night sky, the branch that flies it, what the aircraft is, what that kind of flight usually is, and a live countdown to its closest point. "Track on map" follows it. A pair flying together shows as "Flight of 2". Each aircraft gets the card once every 45 minutes. In a background tab, the page sends a notification instead (turn on "Alert me" in the Military tab), then shows the card when you come back. Any military aircraft can be opened by hand with "Open briefing" on its card. A soft chime can be switched on in the card.
 
-- **Details:** tapping a military aircraft shows its operator (for example United States Army), the full model name and, when one exists, a photo of that exact airframe, all from adsbdb. Well-known callsigns are explained: SAM is a VIP Special Air Mission out of Andrews, RCH is Air Mobility Command, PAT is the Army's Priority Air Transport, C plus four digits is the Coast Guard.
-- **Detection** uses three signals: the military flag in the aircraft database that adsb.lol publishes, the US military block of transponder addresses (AE0000–AFFFFF), and well-known military callsigns (RCH, SAM, PAT, CNV and others). The selected aircraft's card says which signal matched.
-- **The Military tab** lists every military aircraft broadcasting within 250 nm, nearest first. Tap one to jump the map to it.
+**Who flies it.** The branch comes from the aircraft registry (adsbdb's registered owner) when it knows the airframe. Otherwise it's worked out from the callsign (PAT is Army, SAM and RCH are Air Force, CNV is Navy, C plus four digits is the Coast Guard), the tail-number format (Army and Air Force use fiscal-year serials like 13-20636, the Navy and Marines six-digit Bureau Numbers, the Coast Guard four digits) and the aircraft type. The notes live in `app/milinfo.js`.
+
+Also:
+
+- **Detection** uses three signals: the military flag in the aircraft database that adsb.lol publishes, the US military block of transponder addresses (AE0000–AFFFFF), and well-known military callsigns.
+- **The Military tab** lists every military aircraft broadcasting within 250 nm, nearest first, with model and branch. Tap one to jump the map to it.
+- **Passes** keeps every flight that came within 5 nm, with a "Military only" filter. Military passes keep the branch and model.
 - **Map edge arrows** point to military aircraft outside the current view, with their distance.
-- **Alerts:** the Military tab's "Alert me" switch sends a browser notification when a military aircraft comes within 15 nm of home. An on-page banner shows either way.
 - **Emergency squawks** (7500, 7600, 7700) get a pulsing red ring and a badge.
 
-What no public feed can show: aircraft with their transponders off, and many fighters on training flights. Aircraft that send only Mode S (no position) appear when enough receivers hear them to compute a position by multilateration ("MLAT position" on the card).
+What no public feed can show: aircraft with their transponders off, and many fighters on training flights. In a formation, often only the lead aircraft broadcasts. Aircraft that send only Mode S (no position) appear when enough receivers hear them to compute a position by multilateration ("MLAT position" on the card).
 
 ## The Claude dashboard version
 
@@ -61,6 +69,8 @@ node tools/build-claude.mjs
 
 That writes `dist/claude-dashboard.html`, which Claude publishes as the dashboard. Optional flags: `--home "lat,lon,Name"` sets the dashboard's home (kept out of this public repo), and `--wide wide.json` adds a coarse map covering the 250 nm military area.
 
+The dashboard uses no Claude tokens either: its feed requests are plain tool calls to the desktop app's browser, with no model involved. It runs only while it's open in the Claude desktop app (every 9 s, or every 30 s in the background).
+
 ## Data and credits
 
 - Flights: [adsb.lol](https://adsb.lol) (ODbL), with [airplanes.live](https://airplanes.live) and [adsb.fi](https://adsb.fi) as fallbacks
@@ -69,7 +79,7 @@ That writes `dist/claude-dashboard.html`, which Claude publishes as the dashboar
 
 ## Plane images
 
-See [`sprites/README.md`](sprites/README.md) to swap the built-in plane drawings for your own images.
+See [`sprites/README.md`](sprites/README.md) to swap the built-in map drawings and the flyby card's illustrations for your own images.
 
 ## Files
 
@@ -77,14 +87,17 @@ See [`sprites/README.md`](sprites/README.md) to swap the built-in plane drawings
 index.html          the page
 app/style.css       look and layout
 app/core.js         flight math: positions, closest approach, passes, aircraft classes
-app/sprites.js      plane drawings and image overrides
+app/sprites.js      plane drawings for the map, and image overrides
+app/milinfo.js      military notes: branch, aircraft, what a callsign means
+app/milart.js       side-view illustrations for the flyby card
+app/flyby.js        the military flyby card
 app/basemap-tiles.js     live OpenFreeMap vector tiles for the website's map
 app/ui.js           map drawing and panels
-app/transport-web.js     website data: this site's /api functions + adsbdb details
+app/transport-web.js     website data: this site's /api functions, routes and adsbdb details
 app/transport-claude.js  Claude dashboard data: the desktop app's browser + a shared store
 api/planes.js       live aircraft near home
 api/military.js     military aircraft within 250 nm
-api/_lib.js         shared fetch, fallback, military detection, routes
+api/_lib.js         shared fetch, fallback, military detection
 data/map.json       built-in detailed map around Germantown (used by the Claude dashboard)
 sprites/            optional plane images
 icons/, manifest.webmanifest   home-screen icon and app settings

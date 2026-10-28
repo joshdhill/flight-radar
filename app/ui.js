@@ -37,7 +37,10 @@
   else if (!window.OG_TILES) fetch('data/map.json').then(function (r) { return r.json(); }).then(useMap).catch(function () {});
   var AIRPORTS = [['IAD', 38.9445, -77.4558], ['DCA', 38.8521, -77.0377], ['BWI', 39.1754, -76.6683], ['GAI', 39.1684, -77.1660],
     ['FDK', 39.4176, -77.3743], ['JYO', 39.0777, -77.5570], ['ADW', 38.8108, -76.8669], ['DAA', 38.7150, -77.1810]];
-  if (!window.OG_EMBEDDED) fetch('sprites/manifest.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (list) { S.loadOverrides('sprites/', list); }).catch(function () {});
+  if (!window.OG_EMBEDDED) fetch('sprites/manifest.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (list) {
+    S.loadOverrides('sprites/', list);
+    if (window.MilArt && list && list.hero) window.MilArt.loadHero('sprites/', list.hero);
+  }).catch(function () {});
   var T = window.OG_TRANSPORT || { start: function () {}, lookup: function () {}, copy: {} };
   var COPY = {
     off: (T.copy && T.copy.off) || ['Can\u2019t reach the flight feed', 'None of the flight feeds answered yet. This page keeps retrying on its own, usually within a minute.'],
@@ -251,7 +254,7 @@
   // Label next to each plane: the route is the headline, type and altitude sit underneath.
   function labelFor(a) {
     var rt = routeOf(a), ty = C.shortType(a.type);
-    if (a.mil) return { top: a.call, chip: 'MIL', strong: true, sub: ty };
+    if (a.mil) return { top: a.call, chip: 'MIL', strong: true, sub: window.MilInfo ? window.MilInfo.label(a, acInfo[a.id]) : ty };
     if (rt) return { top: C.routeText(rt), chip: '', strong: true, sub: ty };
     return { top: a.call, chip: '', strong: false, sub: ty };
   }
@@ -312,7 +315,7 @@
       var w = Math.max(w1, ws + wa) + 4, lx = x.px + 21, ly = x.py - 16, hh = 32;
       var hit = false;
       for (var m = 0; m < boxes.length; m++) { var b = boxes[m]; if (lx < b[0] + b[2] && lx + w > b[0] && ly < b[1] + b[3] && ly + hh > b[1]) { hit = true; break; } }
-      if (hit && x !== sel && !x.mil) return;
+      if (hit && x !== sel && (!x.mil || wideView)) return; // zoomed far out, crowded military labels give way (the brackets stay)
       boxes.push([lx, ly, w, hh]);
       var cx = lx, ty = x.py - 7, sy = x.py + 9;
       if (L.chip) {
@@ -433,7 +436,7 @@
     if (state.auto) { ac = rows[0] || null; state.selId = ac ? ac.id : null; }
     var badges = $('selBadges'); badges.textContent = '';
     if (!ac) {
-      text('selCall', '–'); text('selRoute', ''); text('selRouteMore', ''); text('selNote', ''); $('selPhotoWrap').hidden = true; text('selType', state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now' : 'Waiting for aircraft');
+      text('selCall', '–'); text('selRoute', ''); text('selRouteMore', ''); text('selNote', ''); $('btnBrief').hidden = true; $('selPhotoWrap').hidden = true; text('selType', state.mode === 'live' ? 'Nothing inside ' + state.range + ' nm right now' : 'Waiting for aircraft');
       ['selAlt', 'selSpd', 'selHdg', 'selDist'].forEach(function (id) { text(id, '–'); });
       text('selVs', ''); text('selCard8', ''); text('selBrg', 'nm'); text('selPass', 'Aircraft appear here as they come near.');
       return;
@@ -450,8 +453,11 @@
     text('selRoute', C.routeText(routeOf(ac)));
     var shownRoute = routeOf(ac), riOk = ri && ri.r === shownRoute;
     text('selRouteMore', riOk ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner ? ai.owner : ''));
-    text('selType', [ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
-    text('selNote', ac.mil ? [C.callsignNote(ac.call), ri ? (ai && ai.owner) || '' : '', C.MIL_LABEL[ac.mil] || ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
+    var br = ac.mil && window.MilInfo ? window.MilInfo.briefing(ac, ai) : null;
+    text('selType', [br ? br.aircraft.name : ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
+    text('selNote', br ? [br.service.name, br.mission ? br.mission.title : ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
+    $('btnBrief').hidden = !(br && FB);
+    if (ac.mil && T.prefetch) T.prefetch(ac);
     var ph = $('selPhoto'), photo = T.photos && ai && ai.photo;
     $('selPhotoWrap').hidden = !photo;
     if (photo && ph.getAttribute('src') !== photo) ph.setAttribute('src', photo);
@@ -497,17 +503,19 @@
     if (!state.milOk) return empty(ul, 'Loading military aircraft within ' + MIL_RANGE + ' nm…');
     if (!rows.length) return empty(ul, 'No military aircraft broadcasting within ' + MIL_RANGE + ' nm right now.');
     rows.forEach(function (ac) {
-      ul.append(row(ac, function () { select(ac.id, true); }, [ac.call, C.shortType(ac.type), C.fmtAlt(ac.alt), Math.round(ac.d) + ' nm ' + C.card8(ac.brg)]));
+      ul.append(row(ac, function () { select(ac.id, true); }, [ac.call, window.MilInfo ? window.MilInfo.label(ac, acInfo[ac.id]) : C.shortType(ac.type), C.fmtAlt(ac.alt), Math.round(ac.d) + ' nm ' + C.card8(ac.brg)]));
     });
   }
+  var milOnly = false;
   function renderLog() {
-    var ul = $('log'), L = tracker.log; ul.textContent = '';
-    if (!L.length) return empty(ul, 'Flights that pass within ' + C.PASS_NM + ' nm of home are logged here.');
+    var ul = $('log'), L = milOnly ? tracker.log.filter(function (r) { return r.mil; }) : tracker.log; ul.textContent = '';
+    if (!L.length) return empty(ul, milOnly ? 'No military aircraft have passed within ' + C.PASS_NM + ' nm yet.' : 'Flights that pass within ' + C.PASS_NM + ' nm of home are logged here.');
     L.forEach(function (r) {
       var li = document.createElement('li'); li.className = 'row log';
       var t = document.createElement('span'); t.className = 'num'; t.style.textAlign = 'left'; t.textContent = hhmm(r.ts);
       var call = document.createElement('span'); call.className = 'call'; call.textContent = r.route ? C.routeText(r.route) : r.call;
-      var sm = document.createElement('small'); sm.textContent = (r.mil ? 'MIL ' : '') + (r.route ? r.call : r.type); call.append(sm);
+      var sm = document.createElement('small'); sm.textContent = r.mil ? (r.svc ? r.svc + ' · ' : 'MIL · ') + (r.name || r.type) : (r.route ? r.call : C.shortType(r.type)); call.append(sm);
+      if (r.mil) { var dot = document.createElement('span'); dot.className = 'milchip'; dot.textContent = 'MIL'; call.prepend(dot); }
       var alt = document.createElement('span'); alt.className = 'num'; alt.textContent = C.fmtAlt(r.alt);
       var d = document.createElement('span'); d.className = 'num'; d.textContent = r.d.toFixed(1) + ' nm';
       li.append(t, call, alt, d); ul.append(li);
@@ -529,23 +537,34 @@
     alertsOn = !alertsOn; lsSet('og-mil-alerts', alertsOn ? '1' : '0'); syncAlertBtn();
     if (alertsOn && 'Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) {} }
   });
-  var toastTimer = null;
-  function toast(msg) {
-    var el = $('toast'); el.textContent = msg; el.hidden = false;
+  var toastTimer = null, toastId = null;
+  function toast(msg, id) {
+    var el = $('toast'); el.textContent = msg; el.hidden = false; toastId = id || null;
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 9000);
   }
+  function notify(title, body, id) {
+    if (alertsOn && 'Notification' in window && Notification.permission === 'granted') { try { new Notification(title, { body: body, tag: 'mil-' + id, icon: 'icons/icon-192.png' }); } catch (e) {} }
+  }
+  // Military aircraft within 15 nm get a small note (the big flyby card covers the ones passing close).
   function checkAlerts() {
     var now = Date.now();
+    if (FB) FB.check(feed.list);
     feed.list.forEach(function (a) {
       if (!a.mil || a.d > ALERT_NM) return;
       if (alerted[a.id] && now - alerted[a.id] < 3600e3) return;
       alerted[a.id] = now;
-      var msg = 'Military nearby: ' + a.call + (a.typeName && a.typeName !== 'Unknown type' ? ' (' + a.typeName + ')' : '') + ', ' + a.d.toFixed(1) + ' nm ' + C.card8(a.brg) + ', ' + C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '');
-      toast(msg);
-      if (alertsOn && 'Notification' in window && Notification.permission === 'granted') { try { new Notification('Plane Sight', { body: msg, tag: 'mil-' + a.id }); } catch (e) {} }
+      if (FB && (FB.openId() === a.id)) return;
+      var b = window.MilInfo ? window.MilInfo.briefing(a, acInfo[a.id]) : null;
+      var msg = 'Military nearby: ' + a.call + ' · ' + (b ? b.aircraft.name + ', ' + b.service.short : a.typeName) + ' · ' + a.d.toFixed(1) + ' nm ' + C.card8(a.brg) + ', ' + C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '');
+      if (!FB || !FB.isOpen()) toast(msg, a.id);
+      if (document.hidden) notify('Plane Sight', msg, a.id);
     });
   }
-  $('toast').addEventListener('click', function () { this.hidden = true; });
+  $('toast').addEventListener('click', function () {
+    this.hidden = true;
+    var a = null; for (var i = 0; i < feed.list.length; i++) if (feed.list[i].id === toastId) a = feed.list[i];
+    if (a && FB) FB.open(a);
+  });
 
   /* ---------- controls ---------- */
   function segBind(id, attr, fn) {
@@ -559,10 +578,11 @@
   function syncRangeSeg() { $('rangeSeg').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', Math.abs(+b.getAttribute('data-range') - state.range) < 0.4 ? 'true' : 'false'); }); }
   segBind('rangeSeg', 'data-range', function (v) { state.range = +v; renderPanels(); });
   segBind('tabSeg', 'data-tab', function (v) {
-    state.tab = v; $('list').hidden = v !== 'now'; $('milList').hidden = v !== 'mil'; $('log').hidden = v !== 'passes'; $('btnAlerts').hidden = v !== 'mil';
+    state.tab = v; $('list').hidden = v !== 'now'; $('milList').hidden = v !== 'mil'; $('log').hidden = v !== 'passes'; $('btnAlerts').hidden = v !== 'mil'; $('btnMilOnly').hidden = v !== 'passes';
     text('listTitle', v === 'now' ? 'In view' : v === 'mil' ? 'Military within ' + MIL_RANGE + ' nm' : 'Passes within ' + C.PASS_NM + ' nm');
     renderPanels();
   });
+  $('btnMilOnly').addEventListener('click', function () { milOnly = !milOnly; this.setAttribute('aria-pressed', String(milOnly)); renderPanels(); });
   $('btnCenter').addEventListener('click', function () { stopFollow(); state.panX = 0; state.panY = 0; });
   $('btnStopFollow').addEventListener('click', function () { stopFollow(); });
   // Summary tiles: step through planes in view, center on the nearest, step through military, open passes.
@@ -619,7 +639,7 @@
   }
   function applyHome(la, lo, name) {
     C.setHome(la, lo); tracker.reset(feed.list); stopFollow(); state.panX = 0; state.panY = 0;
-    text('coords', la.toFixed(4) + '°N ' + Math.abs(lo).toFixed(4) + '°W');
+    text('coords', Math.abs(la).toFixed(2) + '°' + (la >= 0 ? 'N ' : 'S ') + Math.abs(lo).toFixed(2) + '°' + (lo <= 0 ? 'W' : 'E'));
     text('homeLabel', 'Home: ' + (name || la.toFixed(4) + ', ' + lo.toFixed(4)));
     baseKey = '';
   }
@@ -660,6 +680,19 @@
     try { localStorage.removeItem('og-home'); } catch (e) {}
     text('homeNote', 'Home reset to ' + DEFAULT_HOME.name + '.'); closeHome();
   });
+  // A private link like #home=39.137,-77.284,Home sets home on this device. The part after # never
+  // leaves the browser, and it's removed from the address bar once it's been read.
+  function homeFromLink() {
+    var m = /[#&]home=([-0-9.]+),([-0-9.]+)(?:,([^&]*))?/.exec(location.hash || '');
+    if (!m) return false;
+    var la = +m[1], lo = +m[2], nm = m[3] ? decodeURIComponent(m[3]).slice(0, 40) : 'Home';
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    if (!inMapArea(la, lo)) return false;
+    lsSet('og-home', JSON.stringify([la, lo, nm]));
+    return [la, lo, nm];
+  }
+  homeFromLink();
+  window.addEventListener('hashchange', function () { var h = homeFromLink(); if (h) applyHome(h[0], h[1], h[2]); });
   var savedHome = null;
   try { savedHome = JSON.parse(lsGet('og-home') || 'null'); } catch (e) {}
   if (savedHome && savedHome.length >= 2 && inMapArea(savedHome[0], savedHome[1])) applyHome(savedHome[0], savedHome[1], savedHome[2] || '');
@@ -667,10 +700,31 @@
 
   /* ---------- feeds (the transport decides where data comes from) ---------- */
   var lastSave = 0, lastLookup = null, startHandler = null;
+  // Passes by military aircraft keep who flew them and what they were.
+  var recordBase = tracker.record;
+  tracker.record = function (ac) {
+    if (ac.mil && window.MilInfo && !ac.logged && ac.minD !== undefined && ac.minD < C.PASS_NM) {
+      var b = window.MilInfo.briefing(ac, acInfo[ac.id]);
+      ac.logged = true;
+      tracker.add({ id: ac.id, call: ac.call, type: ac.type, route: '', mil: ac.mil, d: +ac.minD.toFixed(2), alt: Math.round(ac.minAlt), ts: ac.minTs, svc: b.service.short, name: b.aircraft.name });
+      return;
+    }
+    recordBase(ac);
+  };
   function loadPasses() { try { JSON.parse(lsGet('og-passes') || '[]').forEach(function (p) { if (p && p.ts) tracker.add(p); }); } catch (e) {} }
   function savePasses() { if (Date.now() - lastSave < 15000) return; lastSave = Date.now(); lsSet('og-passes', JSON.stringify(tracker.log.slice(0, 150))); }
+  var lastInput = Date.now();
+  ['pointerdown', 'keydown', 'wheel'].forEach(function (ev) { window.addEventListener(ev, function () { lastInput = Date.now(); }, { passive: true }); });
   var hub = {
     home: function () { return C.getHome(); },
+    // How often to ask for new positions: quicker while someone is using the page or a military
+    // aircraft is close, slower when it's just sitting open, slowest in a background tab.
+    pace: function () {
+      if (document.hidden) return 'hidden';
+      if (Date.now() - lastInput < 10 * 60e3) return 'fast';
+      for (var i = 0; i < feed.list.length; i++) { var a = feed.list[i]; if ((a.mil && a.d < 40) || a.d < 3) return 'fast'; }
+      return 'idle';
+    },
     near: function (snap) {
       if (feed.ingest(snap, 'near', 60000)) { state.lastData = Math.min(Date.now(), snap.now); tracker.update(feed.list, Date.now()); savePasses(); }
     },
@@ -695,6 +749,13 @@
   $('selPhoto').addEventListener('error', function () { $('selPhotoWrap').hidden = true; var a = findSel(); if (a && acInfo[a.id]) acInfo[a.id].photo = ''; });
   loadPasses();
   T.start(hub);
+  var FB = window.Flyby ? window.Flyby.create({
+    core: C, list: function () { return feed.list; }, info: function (id) { return acInfo[id]; }, photos: !!T.photos,
+    prefetch: function (a) { if (T.prefetch) T.prefetch(a, hub); },
+    onTrack: function (id) { select(id, true); if (state.range > 25) { state.range = 10; syncRangeSeg(); } },
+    notify: notify
+  }) : null;
+  $('btnBrief').addEventListener('click', function () { var a = findSel(); if (a && FB) FB.open(a); });
 
   /* ---------- loop ---------- */
   var lastPanel = 0, tileVersion = -1, lastTileDraw = 0;

@@ -36,7 +36,7 @@ const html = [
   wideArg ? `<script type="application/json" id="widemap">${fs.readFileSync(wideArg, 'utf8')}</script>` : '',
   home,
   '<script>window.OG_EMBEDDED = true; document.documentElement.classList.add("embedded");</script>',
-  js('app/core.js'), js('app/sprites.js'), js('app/transport-claude.js'), js('app/ui.js'),
+  js('app/core.js'), js('app/sprites.js'), js('app/milinfo.js'), js('app/milart.js'), js('app/flyby.js'), js('app/transport-claude.js'), js('app/ui.js'),
 ].join('\n');
 
 fs.mkdirSync(path.dirname(out), { recursive: true });

@@ -60,6 +60,10 @@
       Object.keys(routes).forEach(function (k) { if (now - routes[k].ts > ROUTE_HIT) delete routes[k]; });
       lsSet('og-routes', routes); lsSet('og-acinfo', acinfo);
     }
+    api.prefetch = function (ac) {
+      if (!ac || !/^[0-9a-f]{6}$/i.test(ac.id || '') || acinfo[ac.id] || lookupsBlocked) return;
+      enqueue(['hex', ac.id.toLowerCase()], ac.d < 15);
+    };
     function enqueue(item, front) {
       var key = item.join(':'); if (queued[key]) return;
       queued[key] = 1; if (front) queue.unshift(item); else queue.push(item);
@@ -98,6 +102,7 @@
           var a = k2.response && k2.response.aircraft;
           acinfo[key] = a ? { type: a.type || '', owner: a.registered_owner || '', ts: Date.now() } : { type: '', owner: '', ts: Date.now() };
           if (a) hub.aircraftInfo(key, acinfo[key]);
+          else acinfo[key].none = 1;
         }
       } catch (e) {
         if (e && HOSTLESS[e.code]) throw e;
@@ -144,7 +149,7 @@
       nearSnap.ac.concat(milSnap ? milSnap.ac : []).forEach(function (r) { calls[r[1]] = 1; hexes[r[0]] = 1; });
       var rsub = {}, asub = {};
       Object.keys(calls).forEach(function (c) { if (routes[c] && routes[c].r) rsub[c] = routes[c]; });
-      Object.keys(hexes).forEach(function (x) { if (acinfo[x] && acinfo[x].owner) asub[x] = acinfo[x]; });
+      Object.keys(hexes).forEach(function (x) { if (acinfo[x] && (acinfo[x].owner || acinfo[x].type)) asub[x] = acinfo[x]; });
       db.doc('live/latest').set({
         now: nearSnap.now, ac: JSON.stringify(nearSnap.ac),
         milNow: milSnap ? milSnap.now : 0, mil: JSON.stringify(milSnap ? milSnap.ac : []),
@@ -169,7 +174,8 @@
           if (!everHost && fails >= 3) { polling = false; relay(); return; }
           if (everHost && fails >= 3) hub.setMode('paused');
         }
-        await sleep(fails ? Math.min(30000, 4000 * fails) : Math.max(1500, 9000 - (Date.now() - t0)));
+        // a background tab updates every 30 s; the phone relay and flyby alerts keep working
+        await sleep(fails ? Math.min(30000, 4000 * fails) : Math.max(1500, (document.hidden ? 30000 : 9000) - (Date.now() - t0)));
       }
     }
 
@@ -228,7 +234,7 @@
   }
 
   var api = {
-    name: 'claude', start: start, lookup: function () {}, photos: false,
+    name: 'claude', start: start, lookup: function () {}, prefetch: function () {}, photos: false,
     geocode: function (q) { return Promise.reject(new Error('not ready')); },
     copy: {
       off: ['Live feed is off', 'Open this dashboard in the Claude desktop app on your PC. It pulls live flights through the app’s browser, and your phone picks them up from there.'],

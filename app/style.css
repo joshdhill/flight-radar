@@ -187,3 +187,118 @@ button { font: inherit; color: inherit; }
 .sel-photo img { display: block; width: 100%; max-width: 100%; height: 120px; object-fit: cover; }
 .sel-photo figcaption { position: absolute; right: 6px; bottom: 5px; font-size: 9.5px; color: #fff; background: rgba(0,0,0,0.5); padding: 1px 5px; border-radius: 4px; }
 html:not(.embedded) body { padding-top: calc(18px + env(safe-area-inset-top, 0px)); padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+
+/* ---------- military flyby card ---------- */
+.flyby { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+.flyby .fb-scrim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, rgba(5, 14, 10, 0.55), rgba(3, 8, 6, 0.86)); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); opacity: 0; transition: opacity 0.35s ease; }
+.flyby.in .fb-scrim { opacity: 1; }
+.fb-card { position: relative; width: min(760px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: 22px; background: linear-gradient(180deg, #0c1813, #08110d); border: 1px solid rgba(242, 227, 160, 0.28);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 60px rgba(242, 227, 160, 0.06); transform: translateY(26px) scale(0.97); opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.35s ease; }
+.flyby.in .fb-card { transform: none; opacity: 1; }
+.fb-top { position: absolute; z-index: 3; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 12px; padding: 14px 14px 0 18px; }
+.fb-kicker { display: inline-flex; align-items: center; gap: 9px; padding: 5px 11px 5px 9px; border-radius: 999px; background: rgba(5, 12, 9, 0.72); border: 1px solid rgba(242, 227, 160, 0.4);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mil); }
+.fb-kicker i { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--mil); }
+.fb-kicker i::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid var(--mil); animation: ping 1.6s ease-out infinite; }
+.fb-eta { margin-left: auto; padding: 5px 11px; border-radius: 999px; background: rgba(5, 12, 9, 0.72); border: 1px solid var(--line-strong); font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+.fb-x { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line-strong); background: rgba(5, 12, 9, 0.72); color: var(--fg-muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.fb-x:hover { color: var(--fg); }
+
+/* the sky the aircraft crosses */
+.fb-stage { position: relative; height: clamp(220px, 34vw, 300px); overflow: hidden; border-radius: 21px 21px 0 0;
+  background: radial-gradient(ellipse 80% 60% at 70% 110%, rgba(231, 178, 74, 0.16), transparent 60%), linear-gradient(180deg, #06110d 0%, #0b211b 48%, #16352b 86%, #1d3d31 100%); }
+.fb-stars { position: absolute; inset: 0; opacity: 0.8;
+  background-image: radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 28% 42%, #dfe 50%, transparent 51%), radial-gradient(1.4px 1.4px at 44% 12%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 63% 30%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 81% 16%, #cfe 50%, transparent 51%), radial-gradient(1.2px 1.2px at 92% 38%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 52%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 52% 56%, #dfe 50%, transparent 51%), radial-gradient(1px 1px at 74% 50%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 36% 26%, #fff 50%, transparent 51%);
+  animation: twinkle 4s ease-in-out infinite alternate; }
+@keyframes twinkle { from { opacity: 0.45; } to { opacity: 0.9; } }
+.fb-moon { position: absolute; top: 64px; right: 8%; width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 38% 38%, #f6f1dc, #d9d2b4 60%, #b9b393); box-shadow: 0 0 40px 10px rgba(246, 241, 220, 0.12); opacity: 0.85; }
+.fb-cloud { position: absolute; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(205, 235, 222, 0.10), transparent 70%); filter: blur(2px); animation: drift linear infinite; }
+.fb-cloud.c1 { width: 420px; height: 70px; top: 30%; animation-duration: 38s; }
+.fb-cloud.c2 { width: 300px; height: 50px; top: 62%; animation-duration: 24s; animation-delay: -10s; opacity: 0.8; }
+.fb-cloud.c3 { width: 520px; height: 90px; top: 8%; animation-duration: 56s; animation-delay: -30s; opacity: 0.6; }
+@keyframes drift { from { transform: translateX(110vw); } to { transform: translateX(-120%); } }
+.flyby .fb-fly.west ~ .fb-cloud, .fb-stage:has(.fb-fly.west) .fb-cloud { animation-direction: reverse; }
+.fb-ring { position: absolute; left: 50%; top: 52%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; border: 1px solid rgba(242, 227, 160, 0.3); animation: ring 3.6s ease-out infinite; }
+@keyframes ring { 0% { transform: scale(1); opacity: 0; } 15% { opacity: 0.5; } 100% { transform: scale(48); opacity: 0; } }
+.fb-horizon { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 56px; fill: #050c09; }
+.fb-horizon .fb-lights rect { fill: #f2d48a; opacity: 0.75; animation: twinkle 3s ease-in-out infinite alternate; }
+
+.fb-fly { position: absolute; left: 50%; top: 50%; width: min(620px, 92%); transform: translate(-50%, -54%); }
+.fb-plane { position: relative; animation: fly-in 1.9s cubic-bezier(0.16, 0.84, 0.3, 1) both; }
+.fb-plane .hero-art, .fb-plane .hero-img { display: block; width: 100%; height: auto; filter: drop-shadow(0 18px 18px rgba(0, 0, 0, 0.45)); animation: bob 3.4s ease-in-out 1.9s infinite; }
+.fb-fly.heli .fb-plane .hero-art { animation-name: bob-heli; }
+.fb-fly.west .fb-plane { animation-name: fly-in-west; }
+.fb-fly.west .fb-plane .hero-img { transform: scaleX(-1); }
+@keyframes fly-in { from { transform: translateX(-115%); } to { transform: none; } }
+@keyframes fly-in-west { from { transform: translateX(115%); } to { transform: none; } }
+@keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -5px; } }
+@keyframes bob-heli { 0%, 100% { translate: 0 0; rotate: -0.6deg; } 50% { translate: 0 -6px; rotate: 0.6deg; } }
+.fb-trail { position: absolute; left: -30%; right: 62%; top: 52%; height: 40px; margin-top: -20px; opacity: 0.55;
+  background: repeating-linear-gradient(180deg, transparent 0 7px, rgba(205, 235, 222, 0.22) 7px 8px, transparent 8px 15px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 70%, transparent); mask-image: linear-gradient(90deg, transparent, #000 70%, transparent); animation: streak 0.7s linear infinite; }
+.fb-fly.west .fb-trail { left: 62%; right: -30%; }
+@keyframes streak { from { background-position-x: 0; transform: translateX(0); } to { transform: translateX(-24px); } }
+.fb-fly.west .fb-trail { animation-direction: reverse; }
+
+/* moving parts of the drawings */
+.hero-art .mr { animation: rotor-sweep 0.34s linear infinite; }
+@keyframes rotor-sweep { 0% { transform: scaleX(1); } 25% { transform: scaleX(0.04); } 50% { transform: scaleX(-1); } 75% { transform: scaleX(0.04); } 100% { transform: scaleX(1); } }
+.hero-art .tr { animation: spin 0.16s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.hero-art .pp { animation: prop 0.09s linear infinite; }
+.hero-art .ppr { animation: prop 0.3s linear infinite; }
+.hero-art .ppr2 { animation-delay: -0.15s; }
+@keyframes prop { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.08); } 100% { transform: scaleY(1); } }
+.hero-art .bcn { animation: beacon 1.1s steps(1) infinite; }
+@keyframes beacon { 0% { opacity: 1; } 12% { opacity: 0.15; } 100% { opacity: 0.15; } }
+
+.fb-photo { position: absolute; right: 14px; bottom: 14px; margin: 0; width: 132px; border-radius: 10px; overflow: hidden; border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5); transform: rotate(2deg); background: #111; animation: pop 0.5s 1.4s both cubic-bezier(0.2, 1.4, 0.4, 1); }
+.fb-photo img { display: block; width: 100%; height: 84px; object-fit: cover; }
+.fb-photo figcaption { font-size: 9px; color: #222; background: #f3f1ea; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes pop { from { transform: rotate(2deg) scale(0.6); opacity: 0; } to { transform: rotate(2deg); opacity: 1; } }
+.fb-formation { position: absolute; left: 16px; bottom: 14px; padding: 4px 10px; border-radius: 999px; background: var(--mil); color: var(--bg); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.fb-body { padding: 18px 22px 18px; }
+.fb-id { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.fb-names h2 { margin: 0; font-family: var(--font-display); font-weight: 650; font-size: clamp(26px, 4vw, 36px); line-height: 1.02; letter-spacing: -0.02em; }
+.fb-names p { margin: 7px 0 0; font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-muted); letter-spacing: 0.03em; }
+.fb-svc { flex: none; position: relative; overflow: hidden; display: inline-flex; align-items: center; padding: 7px 13px; border-radius: 8px; border: 1.5px solid; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; animation: badge-in 0.6s 0.5s both cubic-bezier(0.2, 1.2, 0.4, 1); }
+.fb-svc::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent); animation: shine 1.2s 1.1s ease-out both; }
+@keyframes badge-in { from { transform: translateY(8px) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes shine { to { left: 130%; } }
+.svc-army, .svc-arng { background: #17170f; color: #f2c94c; border-color: #b8952f; }
+.svc-af, .svc-ang { background: #0d2766; color: #e2eaff; border-color: #6f93e6; }
+.svc-navy { background: #0b1b3d; color: #e7c66b; border-color: #a88a3a; }
+.svc-usmc { background: #6e1220; color: #ffd34e; border-color: #c9a22b; }
+.svc-uscg { background: #f4f5f6; color: #c8371d; border-color: #1f4e8c; }
+.svc-ussf { background: #111418; color: #d7dde4; border-color: #8a94a0; }
+.svc-us, .svc-foreign { background: rgba(242, 227, 160, 0.1); color: var(--mil); border-color: rgba(242, 227, 160, 0.5); }
+.fb-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 18px 0 0; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.fb-stats dt { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-faint); }
+.fb-stats dd { margin: 4px 0 0; font-family: var(--font-mono); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fb-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+.fb-notes h3 { margin: 0; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mil); font-weight: 700; }
+.fb-notes p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: #c4d2ca; }
+.fb-notes.solo { grid-template-columns: 1fr; }
+.fb-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.fb-actions .btn { padding: 8px 16px; font-size: 13px; }
+.fb-spacer { flex: 1; }
+.fb-timer { height: 3px; background: rgba(242, 227, 160, 0.08); }
+.fb-timer b { display: block; height: 100%; background: var(--mil); opacity: 0.7; transform-origin: left; transition: transform 0.5s linear; }
+@media (max-width: 620px) {
+  .fb-kicker { font-size: 10px; letter-spacing: 0.08em; white-space: nowrap; }
+  .fb-eta { font-size: 11px; white-space: nowrap; }
+  .fb-moon { display: none; }
+  .fb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fb-notes { grid-template-columns: 1fr; }
+  .fb-id { flex-direction: column-reverse; gap: 10px; }
+  .fb-photo { width: 104px; } .fb-photo img { height: 64px; }
+  .fb-body { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .fb-card { transition: none; } }
+.sel-brief { margin-top: 8px; }
+.row .call .milchip { font-family: var(--font-mono); font-size: 8.5px; font-weight: 700; background: var(--mil); color: var(--bg); padding: 1px 4px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; }
+#btnMilOnly[aria-pressed="true"] { color: var(--mil); text-decoration-color: var(--mil); }
