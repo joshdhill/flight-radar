@@ -1,7 +1,8 @@
 // GET /api/geocode?q=17103+Main+St,+Germantown,+MD&near=39.17,-77.27
-// Turns an address into a map point for "Change home". The U.S. Census Bureau's geocoder places a
-// house number along its block, so it's usually within a few houses; OpenStreetMap is the fallback
-// (and covers places outside the U.S.). Nothing is cached or stored.
+// Turns an address into a map point for "Change home". Both lookups run at once:
+//  - OpenStreetMap, when it has that exact house number, puts the point on the house itself;
+//  - the U.S. Census Bureau places the number along its block (usually within a few houses).
+// The house point wins when there is one. Nothing is cached or stored.
 const UA = 'plane-sight/1.0 (personal flight dashboard; github.com/joshdhill/flight-radar)';
 
 async function getJson(url, ms) {
@@ -38,10 +39,7 @@ export async function GET(request) {
   const near = nm ? { lat: +nm[1], lon: +nm[2] } : null;
   const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
   if (!q) return new Response(JSON.stringify({ error: 'Type an address.' }), { status: 400, headers });
-  let hit = null;
-  try { hit = await census(q); } catch {}
-  if (!hit || !hit.exact) {
-    try { const o = await osm(q, near); if (o && (!hit || o.exact)) hit = o; } catch {}
-  }
+  const [c, o] = await Promise.all([census(q).catch(() => null), osm(q, near).catch(() => null)]);
+  const hit = (o && o.exact) ? o : (c && c.exact) ? c : (c || o);
   return new Response(JSON.stringify(hit || { none: true }), { status: 200, headers });
 }
