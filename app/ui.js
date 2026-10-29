@@ -383,8 +383,10 @@
     drawEdgeMarkers(hp);
   }
   // Military aircraft outside the view get a pointer at the map edge.
+  // Space taken by the floating panels at the top and bottom of the map (phones).
+  function edgeInsets() { return isPhone() ? [126, 112] : [22, 40]; }
   function drawEdgeMarkers(hp) {
-    var ow = overlayW(), x0 = 22, y0 = 22, x1 = W - ow - 22, y1 = H - 40, arrows = [], boxes = [];
+    var ins = edgeInsets(), ow = overlayW(), x0 = 22, y0 = ins[0], x1 = W - ow - 22, y1 = H - ins[1], arrows = [], boxes = [];
     var reach = Math.max(40, state.range * 4), shown = 0;
     military().forEach(function (a) {
       if (a.vis || a.d > reach || shown >= 6) return;
@@ -407,8 +409,16 @@
       ctx.fillStyle = col['mil']; ctx.fillText(label, lx, ly);
     });
   }
+  var homeNum = { key: '', num: '' }, homeEdge = null;
+  function homeHouseNumber() {
+    var h = C.getHome(), key = h.lat + ',' + h.lon + ',' + (window.OG_TILES ? window.OG_TILES.version() : 0);
+    if (homeNum.key !== key) { var hs = houseAt(h.lat, h.lon); homeNum = { key: key, num: hs ? hs.num : '' }; }
+    return homeNum.num;
+  }
   function drawHome(t) {
-    var hp = homePx(), cx = hp[0], cy = hp[1], pulse = reduced ? 0 : (t / 2400) % 1;
+    var hp = homePx(), cx = hp[0], cy = hp[1], pulse = reduced ? 0 : (t / 2400) % 1, ow = overlayW();
+    homeEdge = null;
+    if (cx < -12 || cy < -12 || cx > W - ow + 12 || cy > H + 12) { drawHomeEdge(hp, ow); return; }
     ctx.beginPath(); ctx.arc(cx, cy, 7 + pulse * 20, 0, Math.PI * 2);
     ctx.strokeStyle = col['home']; ctx.globalAlpha = 0.45 * (1 - pulse); ctx.lineWidth = 1.4; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.save(); ctx.translate(cx, cy);
@@ -416,6 +426,31 @@
     ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(6.5, -1.2); ctx.lineTo(4.6, -1.2); ctx.lineTo(4.6, 5.5); ctx.lineTo(-4.6, 5.5); ctx.lineTo(-4.6, -1.2); ctx.lineTo(-6.5, -1.2); ctx.closePath();
     ctx.fillStyle = col['home']; ctx.fill(); ctx.fillStyle = col['land']; ctx.fillRect(-1.4, 1.6, 2.8, 3.9);
     ctx.restore();
+    if (state.range <= 1.6) {
+      var num = homeHouseNumber(), label = num ? 'Home · ' + num : 'Home';
+      ctx.font = '700 11px "B612", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.lineWidth = 3.5; ctx.strokeStyle = col['land']; ctx.lineJoin = 'round'; ctx.strokeText(label, cx, cy + 15);
+      ctx.fillStyle = col['home']; ctx.fillText(label, cx, cy + 15);
+    }
+  }
+  // Home is off screen: a marker at the edge pointing to it (tap it to go back home).
+  function drawHomeEdge(hp, ow) {
+    var ins = edgeInsets(), c = [(W - ow) / 2, H / 2], dx = hp[0] - c[0], dy = hp[1] - c[1], x0 = 26, y0 = ins[0] + 4, x1 = W - ow - 26, y1 = H - ins[1] - 4, tt = Infinity;
+    if (dx > 0) tt = Math.min(tt, (x1 - c[0]) / dx); if (dx < 0) tt = Math.min(tt, (x0 - c[0]) / dx);
+    if (dy > 0) tt = Math.min(tt, (y1 - c[1]) / dy); if (dy < 0) tt = Math.min(tt, (y0 - c[1]) / dy);
+    if (!isFinite(tt)) return;
+    var ex = c[0] + dx * tt, ey = c[1] + dy * tt, ang = Math.atan2(dy, dx), d = Math.hypot(state.panX, state.panY);
+    homeEdge = [ex, ey];
+    ctx.save(); ctx.translate(ex, ey);
+    ctx.save(); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(17, 0); ctx.lineTo(9, -6); ctx.lineTo(9, 6); ctx.closePath(); ctx.fillStyle = col['home']; ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fillStyle = col['land']; ctx.fill(); ctx.strokeStyle = col['home']; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(5.5, -1); ctx.lineTo(3.9, -1); ctx.lineTo(3.9, 4.6); ctx.lineTo(-3.9, 4.6); ctx.lineTo(-3.9, -1); ctx.lineTo(-5.5, -1); ctx.closePath(); ctx.fillStyle = col['home']; ctx.fill();
+    ctx.restore();
+    var label = 'Home ' + (d < 10 ? d.toFixed(1) : Math.round(d)) + ' nm';
+    ctx.font = '700 10px "B612 Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
+    ctx.textAlign = ex > W / 2 ? 'right' : 'left';
+    var lx = ex + (ex > W / 2 ? -18 : 18), ly = ey + (ey > H - 40 ? -16 : ey < 40 ? 16 : 0);
+    ctx.lineWidth = 3; ctx.strokeStyle = col['land']; ctx.strokeText(label, lx, ly); ctx.fillStyle = col['home']; ctx.fillText(label, lx, ly);
   }
 
   function drawCrosshair() {
@@ -767,14 +802,49 @@
     if (dragged) { dragged = false; return; }
     if (!$('homePop').hidden) { hideHomePop(); return; }
     var r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = null, bd = 30;
+    if (homeEdge && Math.hypot(homeEdge[0] - x, homeEdge[1] - y) < 26) { stopFollow(); state.panX = 0; state.panY = 0; return; }
     feed.list.forEach(function (ac) { if (!ac.vis) return; var d = Math.hypot(ac.px - x, ac.py - y); if (d < bd) { bd = d; best = ac; } });
     if (best) select(best.id); else { state.auto = true; renderPanels(); }
   });
 
-  // Press and hold (or right-click) on the map: set home right there.
+  // The house at a spot: the building outline it falls in (its center) and that house's number,
+  // from the street-level map tiles. Null when those tiles aren't loaded for that spot.
+  function inRing(la, lo, r) {
+    var c = false;
+    for (var i = 0, j = r.length - 1; i < r.length; j = i++) {
+      var yi = r[i][0], xi = r[i][1], yj = r[j][0], xj = r[j][1];
+      if (((yi > la) !== (yj > la)) && (lo < (xj - xi) * (la - yi) / (yj - yi) + xi)) c = !c;
+    }
+    return c;
+  }
+  function ringCenter(r) {
+    var a = 0, cy = 0, cx = 0;
+    for (var i = 0, j = r.length - 1; i < r.length; j = i++) { var f = r[j][1] * r[i][0] - r[i][1] * r[j][0]; a += f; cx += (r[j][1] + r[i][1]) * f; cy += (r[j][0] + r[i][0]) * f; }
+    if (Math.abs(a) < 1e-14) { var la = 0, lo = 0; r.forEach(function (q) { la += q[0]; lo += q[1]; }); return [la / r.length, lo / r.length]; }
+    return [cy / (3 * a), cx / (3 * a)];
+  }
+  function metres(la1, lo1, la2, lo2) { return Math.hypot((la2 - la1) * 111320, (lo2 - lo1) * 111320 * Math.cos(la1 * RAD)); }
+  function houseAt(la, lo) {
+    if (!window.OG_TILES) return null;
+    var d = 0.0012, L = window.OG_TILES.layersFor([la - d, la + d, lo - d * 1.3, lo + d * 1.3], 14);
+    var bld = null;
+    for (var i = 0; i < L.buildings.length; i++) { var r = L.buildings[i], b = r.b; if (la >= b[0] && la <= b[1] && lo >= b[2] && lo <= b[3] && inRing(la, lo, r)) { bld = r; break; } }
+    var at = bld ? ringCenter(bld) : [la, lo], num = '', best = bld ? 40 : 18;
+    L.housenumbers.forEach(function (h) {
+      var dm = bld && inRing(h[1], h[2], bld) ? 0 : metres(at[0], at[1], h[1], h[2]);
+      if (dm < best) { best = dm; num = h[0]; }
+    });
+    if (!bld && !L.buildings.length && L.loading) return null;
+    return { lat: +at[0].toFixed(6), lon: +at[1].toFixed(6), building: !!bld, num: num };
+  }
+
+  // Press and hold (or right-click) on the map: set home right there (snapped to the house you pressed).
   function showHomePop(p) {
     var w = worldAt(p), h = C.getHome(), cosl = Math.cos(h.lat * RAD);
-    popAt = { p: p, lat: +(h.lat + w[1] / 60).toFixed(5), lon: +(h.lon + w[0] / (60 * cosl)).toFixed(5), world: w };
+    var la = h.lat + w[1] / 60, lo = h.lon + w[0] / (60 * cosl), house = houseAt(la, lo);
+    if (house && house.building) { la = house.lat; lo = house.lon; w = [(lo - h.lon) * 60 * cosl, (la - h.lat) * 60]; }
+    popAt = { p: p, lat: +la.toFixed(6), lon: +lo.toFixed(6), world: w, num: house ? house.num : '' };
+    text('homePopText', popAt.num ? 'Set home at ' + popAt.num + '?' : 'Set home here?');
     var pop = $('homePop'); pop.hidden = false;
     var pw = pop.offsetWidth || 180, ph = pop.offsetHeight || 80;
     pop.style.left = Math.max(8, Math.min(W - pw - 8, p[0] - pw / 2)) + 'px';
@@ -785,7 +855,7 @@
   $('btnPopSet').addEventListener('click', function () {
     if (!popAt) return;
     var a = popAt; hideHomePop();
-    if (saveHome(a.lat, a.lon, 'My house')) toast('Home set right there. It’s saved in this browser.', null, 'info');
+    if (saveHome(a.lat, a.lon, a.num ? 'My house (' + a.num + ')' : 'My house')) toast('Home set' + (a.num ? ' at ' + a.num : ' right there') + '. It’s saved in this browser.', null, 'info');
   });
   function drawPopPin() {
     if (!popAt) return;
@@ -823,7 +893,7 @@
   }
   function saveHome(la, lo, name) {
     if (!inMapArea(la, lo)) { text('homeNote', 'That spot is outside the map, which covers about 25 miles around Germantown.'); toast('That spot is outside this map.', null, 'info'); return false; }
-    applyHome(la, lo, name); lsSet('og-home', JSON.stringify([la, lo, name || '']));
+    applyHome(la, lo, name); lsSet('og-home', JSON.stringify([la, lo, name || ''])); $('homeAsk').hidden = true;
     text('homeNote', 'Home moved. It’s saved in this browser.');
     closeHome(); return true;
   }
@@ -851,13 +921,35 @@
     var la = h.lat + state.panY / 60, lo = h.lon + state.panX / (60 * cosl);
     saveHome(+la.toFixed(5), +lo.toFixed(5), '');
   });
-  $('btnHomeGps').addEventListener('click', function () {
+  // Your location, snapped to the house you're standing in when the map knows its outline.
+  function useMyLocation() {
     text('homeNote', 'Asking for your location…');
+    if (!('geolocation' in navigator)) { toast('This browser can’t share your location. Press and hold on your house instead.', null, 'info'); return; }
     navigator.geolocation.getCurrentPosition(function (p) {
-      if (saveHome(+p.coords.latitude.toFixed(5), +p.coords.longitude.toFixed(5), 'My house')) { state.range = 0.5; syncRangeSeg(); toast('Home set from your location (accurate to about ' + Math.round(p.coords.accuracy) + ' m).', null, 'info'); }
-    },
-      function () { text('homeNote', 'Location wasn’t shared. Use the search or the map center instead.'); }, { enableHighAccuracy: true, timeout: 10000 });
+      var la = p.coords.latitude, lo = p.coords.longitude, hs = houseAt(la, lo), name = 'My house';
+      if (hs && hs.building) { la = hs.lat; lo = hs.lon; }
+      if (hs && hs.num) name = 'My house (' + hs.num + ')';
+      if (saveHome(+la.toFixed(6), +lo.toFixed(6), name)) {
+        state.range = 0.3; syncRangeSeg();
+        toast('Home set from your location' + (hs && hs.num ? ' at ' + hs.num : '') + '. If the house icon isn’t on your roof, press and hold on your roof.', null, 'info');
+      }
+    }, function () {
+      text('homeNote', 'Location wasn’t shared. Use the search or press and hold on your house instead.');
+      toast('Location wasn’t shared. Search your address, or press and hold on your house.', null, 'info');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+  $('btnHomeGps').addEventListener('click', useMyLocation);
+  // A device that has never had a home set says so, instead of quietly showing Germantown.
+  function homeAskShown() {
+    var d = Number(lsGet('og-home-ask') || 0);
+    return T.name === 'web' && !lsGet('og-home') && Date.now() - d > 3 * 86400e3;
+  }
+  $('homeAskGps').addEventListener('click', function () { $('homeAsk').hidden = true; useMyLocation(); });
+  $('homeAskSearch').addEventListener('click', function () {
+    $('homeAsk').hidden = true; $('homeForm').hidden = false; $('btnHome').setAttribute('aria-expanded', 'true');
+    $('homeForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(function () { $('homeQuery').focus(); }, 400);
   });
+  $('homeAskX').addEventListener('click', function () { $('homeAsk').hidden = true; lsSet('og-home-ask', String(Date.now())); });
   $('btnHomeReset').addEventListener('click', function () {
     applyHome(DEFAULT_HOME.lat, DEFAULT_HOME.lon, DEFAULT_HOME.name);
     try { localStorage.removeItem('og-home'); } catch (e) {}
@@ -883,6 +975,7 @@
   try { savedHome = JSON.parse(lsGet('og-home') || 'null'); } catch (e) {}
   if (savedHome && savedHome.length >= 2 && inMapArea(savedHome[0], savedHome[1])) applyHome(savedHome[0], savedHome[1], savedHome[2] || '');
   else applyHome(DEFAULT_HOME.lat, DEFAULT_HOME.lon, DEFAULT_HOME.name);
+  $('homeAsk').hidden = !homeAskShown();
 
   /* ---------- feeds (the transport decides where data comes from) ---------- */
   var lastSave = 0, lastLookup = null, startHandler = null;

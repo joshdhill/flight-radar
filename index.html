@@ -71,8 +71,16 @@
       </button>
       <button type="button" class="peek" id="btnPeek"><span class="grab" aria-hidden="true"></span>Details and lists</button>
 
+      <div class="glass home-ask" id="homeAsk" hidden role="dialog" aria-labelledby="homeAskTitle">
+        <button type="button" class="home-ask-x" id="homeAskX" aria-label="Not now">×</button>
+        <p class="home-ask-title" id="homeAskTitle">Where’s home?</p>
+        <p class="home-ask-text">This device doesn’t know your house yet, so the map is centered on Germantown.</p>
+        <div class="home-ask-actions"><button type="button" class="btn primary" id="homeAskGps">I’m home: use my location</button><button type="button" class="btn" id="homeAskSearch">Search my address</button></div>
+        <p class="foot">Or press and hold on your house.</p>
+      </div>
+
       <div class="glass home-pop" id="homePop" hidden role="dialog" aria-label="Set home">
-        <p>Set home here?</p>
+        <p id="homePopText">Set home here?</p>
         <div class="home-pop-actions"><button type="button" class="btn primary" id="btnPopSet">Set home</button><button type="button" class="btn" id="btnPopCancel">Cancel</button></div>
       </div>
     </div>

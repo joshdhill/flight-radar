@@ -174,6 +174,13 @@ button { font: inherit; color: inherit; }
 .home-pop-actions { display: flex; gap: 8px; }
 .home-pop .btn { padding: 7px 12px; font-size: 13px; }
 
+.home-ask { position: absolute; z-index: 3; top: 140px; left: 14px; width: min(360px, calc(100% - 28px)); padding: 14px 16px 12px; border-radius: 14px; border-color: rgba(244, 248, 245, 0.35); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+.home-ask-title { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 19px; }
+.home-ask-text { margin: 4px 0 10px; font-size: 13px; color: var(--fg-muted); }
+.home-ask-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.home-ask-actions .btn { padding: 8px 12px; font-size: 13px; }
+.home-ask-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; color: var(--fg-muted); font-size: 18px; cursor: pointer; }
+
 /* military search and filters */
 .miltools { margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .miltools input { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(235, 248, 240, 0.05); color: var(--fg); font: inherit; font-size: 13px; }
@@ -227,7 +234,8 @@ button { font: inherit; color: inherit; }
   .overlay { position: static; width: auto; padding: 12px; }
   .overlay .rows { max-height: none; overflow: visible; }
   .home-search input, .miltools input { font-size: 16px; } /* 16px keeps iPhone from zooming the page while typing */
-  html body .toast { top: calc(env(safe-area-inset-top, 0px) + 116px); }
+  html body .toast { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); }
+  .home-ask { top: calc(env(safe-area-inset-top, 0px) + 112px); left: 10px; right: 10px; width: auto; }
 }
 @media (max-width: 520px) {
   .stat { padding: 1px 6px; }
