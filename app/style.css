@@ -362,6 +362,24 @@ html:not(.embedded) body { padding-top: calc(18px + env(safe-area-inset-top, 0px
 .fb-spacer { flex: 1; }
 .fb-timer { height: 3px; background: rgba(242, 227, 160, 0.08); }
 .fb-timer b { display: block; height: 100%; background: var(--mil); opacity: 0.7; transform-origin: left; transition: transform 0.5s linear; }
+/* civilian details: real photo, neutral styling, owner records */
+.flyby.civil .fb-kicker { color: var(--fg); border-color: var(--line-strong); }
+.flyby.civil .fb-kicker i, .flyby.civil .fb-kicker i::after { background: var(--live); border-color: var(--live); }
+.flyby.civil .fb-card { border-color: var(--line-strong); }
+.flyby.manual .fb-timer { display: none; }
+.fb-hero { position: absolute; inset: 0; overflow: hidden; background: #0b1410; }
+.fb-hero img { width: 100%; height: 100%; object-fit: cover; display: block; animation: kenburns 14s ease-out both; }
+.fb-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 11, 8, 0.55) 0%, rgba(5, 11, 8, 0) 30%, rgba(5, 11, 8, 0) 70%, rgba(8, 17, 13, 0.85) 100%); pointer-events: none; }
+.fb-credit { position: absolute; right: 12px; bottom: 10px; z-index: 1; font-size: 10px; color: rgba(255, 255, 255, 0.75); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+@keyframes kenburns { from { transform: scale(1.08); } to { transform: scale(1); } }
+.svc-civil { background: rgba(235, 248, 240, 0.06); color: var(--fg); border-color: var(--line-strong); letter-spacing: 0.06em; }
+.fb-where { color: var(--fg-muted) !important; font-size: 12.5px !important; }
+.fb-owner { grid-column: 1 / -1; }
+.fb-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 8px 0 0; font-size: 13px; }
+.fb-facts dt { color: var(--fg-faint); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
+.fb-facts dd { margin: 0; color: #c4d2ca; }
+.fb-facts dd small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg-faint); }
+
 @media (max-width: 620px) {
   .fb-kicker { font-size: 10px; letter-spacing: 0.08em; white-space: nowrap; }
   .fb-eta { font-size: 11px; white-space: nowrap; }

@@ -19,7 +19,9 @@
     uscgjet: { body: '#f2f4f5', top: '#ffffff', belly: '#d6dadd', dark: '#9aa2a7', mark: '#e0482b', glass: '#1a2228', stripe: '#e0482b' },
     sam: { body: '#a9c6dc', top: '#f3f6f8', belly: '#93b2c9', dark: '#173a6a', mark: '#173a6a', glass: '#16222c', split: true, cheat: '#173a6a' },
     us: { body: '#878f94', top: '#a3aaae', belly: '#6c7479', dark: '#545b60', mark: 'rgba(30,36,40,0.7)', glass: '#1a252c', lowvis: true },
-    foreign: { body: '#7f8a86', top: '#9aa49f', belly: '#646e6a', dark: '#4e5753', mark: 'rgba(30,36,40,0.7)', glass: '#1a252c', lowvis: true }
+    foreign: { body: '#7f8a86', top: '#9aa49f', belly: '#646e6a', dark: '#4e5753', mark: 'rgba(30,36,40,0.7)', glass: '#1a252c', lowvis: true },
+    // civilian aircraft: plain white and pale gray, no markings
+    civil: { body: '#dfe4e7', top: '#f6f8f9', belly: '#bcc5ca', dark: '#6b757c', mark: '#3b4a56', glass: '#1a252c', civil: true }
   };
   function palette(livery, art) {
     if (livery === 'af' && /^heli-(huey|utility)$/.test(art)) return PAL['af-heli'];
@@ -58,6 +60,7 @@
   }
   // U.S. national star insignia (low-visibility gray on camouflaged aircraft).
   function roundel(x, y, r, p) {
+    if (p.civil) return '';
     var low = p.lowvis, blue = low ? 'rgba(0,0,0,0.0)' : '#1f3b74', ink = low ? p.mark : '#ffffff', red = low ? 'rgba(0,0,0,0)' : '#b3262e';
     var star = [], i;
     for (i = 0; i < 10; i++) { var a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.38 : r * 0.95; star.push((x + Math.cos(a) * rr).toFixed(1) + ',' + (y + Math.sin(a) * rr).toFixed(1)); }

@@ -99,7 +99,7 @@
         ac.cls = classOf(ac.type, r[4]);
         ac.baseAlt = r[5]; ac.gs = r[6]; ac.trk = r[7]; ac.vs = r[8];
         ac.baseLat = r[9]; ac.baseLon = r[10]; ac.baseT = Math.min(now, snap.now) - (r[11] || 0) * 1000; ac.lastSeen = now;
-        ac.mil = r[12] || ''; ac.route = r[13] || ''; ac.squawk = r[14] || ''; ac.mlat = r[15] === 'mlat';
+        ac.mil = r[12] || ''; ac.route = r[13] || ''; ac.squawk = r[14] || ''; ac.mlat = r[15] === 'mlat'; ac.priv = r[16] || '';
         ac.emergency = /^(7500|7600|7700)$/.test(ac.squawk);
         ac.ttl = ttlMs || 60000; ac.reckonSec = Math.min(90, (ttlMs || 60000) / 1000 * 0.75);
         deadReckon(ac, now);
@@ -220,7 +220,8 @@
     if (age > 60) return null;
     return [a.hex, (a.flight || '').trim(), a.r || '', a.t || '', a.category || '', Math.round(alt), Math.round(a.gs || 0),
       Math.round(a.track != null ? a.track : a.true_heading || 0), Math.round(a.baro_rate != null ? a.baro_rate : a.geom_rate || 0),
-      +a.lat.toFixed(5), +a.lon.toFixed(5), +(+age).toFixed(1), militaryFlag(a), route || '', a.squawk || '', a.type || ''];
+      +a.lat.toFixed(5), +a.lon.toFixed(5), +(+age).toFixed(1), militaryFlag(a), route || '', a.squawk || '', a.type || '',
+      (a.dbFlags & 8) ? 'ladd' : (a.dbFlags & 4) ? 'pia' : ''];
   }
   // pull the JSON object out of page text that may have extra lines around it
   function extractJson(text) {

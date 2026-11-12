@@ -82,8 +82,8 @@
             var ap = Array.isArray(v._airports) ? v._airports : [];
             if (ap.length >= 2) {
               var a0 = ap[0], a1 = ap[ap.length - 1];
-              entry = { r: (a0.iata || a0.icao) + '-' + (a1.iata || a1.icao), f: a0.location || '', t: a1.location || '', a: '',
-                o: [+a0.lat, +a0.lon], d: [+a1.lat, +a1.lon], legs: ap.map(function (x) { return [x.iata || x.icao, +x.lat, +x.lon, x.location || '']; }), ts: Date.now() };
+              entry = { r: (a0.iata || a0.icao) + '-' + (a1.iata || a1.icao), f: a0.location || '', t: a1.location || '', fn: a0.name || '', tn: a1.name || '', a: '',
+                o: [+a0.lat, +a0.lon], d: [+a1.lat, +a1.lon], legs: ap.map(function (x) { return [x.iata || x.icao, +x.lat, +x.lon, x.location || '', x.name || '']; }), ts: Date.now() };
             }
           } catch (e1) { if (e1 && (HOSTLESS[e1.code] || DECLINED[e1.code])) throw e1; }
           if (!entry) {
@@ -91,7 +91,7 @@
             var f = j.response && j.response.flightroute;
             entry = f && f.origin && f.destination ? {
               r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
-              f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '',
+              f: f.origin.municipality || f.origin.name || '', t: f.destination.municipality || f.destination.name || '', fn: f.origin.name || '', tn: f.destination.name || '',
               a: (f.airline && f.airline.name) || '', o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude],
               ts: Date.now() } : { r: '', ts: Date.now() };
           }
@@ -100,7 +100,7 @@
         } else {
           var k2 = await load('https://api.adsbdb.com/v0/aircraft/' + key);
           var a = k2.response && k2.response.aircraft;
-          acinfo[key] = a ? { type: a.type || '', owner: a.registered_owner || '', ts: Date.now() } : { type: '', owner: '', ts: Date.now() };
+          acinfo[key] = a ? { type: a.type || '', maker: a.manufacturer || '', owner: a.registered_owner || '', country: a.registered_owner_country_name || '', ts: Date.now() } : { type: '', owner: '', ts: Date.now() };
           if (a) hub.aircraftInfo(key, acinfo[key]);
           else acinfo[key].none = 1;
         }

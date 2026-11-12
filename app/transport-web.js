@@ -26,7 +26,8 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (v) {
         var ap = v && Array.isArray(v._airports) ? v._airports : [];
-        routes[cs] = ap.length >= 2 ? { ts: Date.now(), legs: ap.map(function (x) { return [x.iata || x.icao, +x.lat, +x.lon, x.location || '']; }) } : { ts: Date.now() };
+        // each stop: [code, lat, lon, city, airport name]
+        routes[cs] = ap.length >= 2 ? { ts: Date.now(), legs: ap.map(function (x) { return [x.iata || x.icao, +x.lat, +x.lon, x.location || '', x.name || '']; }) } : { ts: Date.now() };
       })
       .catch(function () { routes[cs] = { ts: Date.now() }; })
       .then(function () { delete pending[cs]; if (Date.now() - lastSave > 20000) { lastSave = Date.now(); lsSet('og-routes-web', routes); } });
@@ -43,6 +44,7 @@
     return null;
   }
 
+  var sentCities = {};
   function start(hub) {
     // Two decimals (about half a mile) is plenty for a 30-mile search and keeps your exact spot private.
     function q() { var h = hub.home(); return '?lat=' + h.lat.toFixed(2) + '&lon=' + h.lon.toFixed(2); }
@@ -64,14 +66,20 @@
           var r = await fetch('api/planes' + q()), snap = await r.json();
           if (!snap || !Array.isArray(snap.ac)) throw new Error((snap && snap.error) || 'no aircraft list');
           fails = 0; everLive = true;
-          var now = Date.now(), want = [];
+          var now = Date.now(), want = [], info = {};
           snap.ac.forEach(function (row) {
             var cs = row[1];
             if (!C.looksLikeAirline(cs)) return;
             var leg = legOf(cs, row[9], row[10]);
-            if (leg) row[13] = leg[0][0] + '-' + leg[1][0];
+            if (leg) {
+              var code = leg[0][0] + '-' + leg[1][0];
+              row[13] = code;
+              // cities and airport names for the selected-plane card
+              if (sentCities[cs] !== code) { sentCities[cs] = code; info[cs] = { r: code, f: leg[0][3], t: leg[1][3], fn: leg[0][4] || '', tn: leg[1][4] || '', o: [leg[0][1], leg[0][2]], d: [leg[1][1], leg[1][2]] }; }
+            }
             else if (!fresh(routes[cs], now)) want.push([C.distanceNm(hub.home().lat, hub.home().lon, row[9], row[10]), cs]);
           });
+          if (Object.keys(info).length) hub.routes(info);
           hub.near(snap);
           hub.setMode('live', snap.stale ? 'feed slow' : '');
           // look up a few new flight numbers each round, closest first
@@ -108,7 +116,8 @@
       .then(function (j) {
         var a = j && j.response && j.response.aircraft;
         if (!a || !hub) return;
-        hub.aircraftInfo(ac.id, { type: a.type || '', owner: a.registered_owner || '', photo: a.url_photo_thumbnail || a.url_photo || '' });
+        hub.aircraftInfo(ac.id, { type: a.type || '', maker: a.manufacturer || '', owner: a.registered_owner || '', country: a.registered_owner_country_name || '',
+          photo: a.url_photo_thumbnail || a.url_photo || '', photoBig: a.url_photo || a.url_photo_thumbnail || '' });
       }).catch(function () {});
   }
   // Called for the selected aircraft: route cities and airline, plus airframe details.
@@ -122,11 +131,13 @@
       ]).then(function (res) {
         var f = res[1] && res[1].response && res[1].response.flightroute, info = {};
         var leg = legOf(cs, ac.lat, ac.lon), airline = (f && f.airline && f.airline.name) || '';
-        if (leg) info[cs] = { r: leg[0][0] + '-' + leg[1][0], f: leg[0][3], t: leg[1][3], a: airline };
+        if (leg) info[cs] = { r: leg[0][0] + '-' + leg[1][0], f: leg[0][3], t: leg[1][3], fn: leg[0][4] || '', tn: leg[1][4] || '', a: airline,
+          o: [leg[0][1], leg[0][2]], d: [leg[1][1], leg[1][2]] };
         else if (f && f.origin && f.destination) info[cs] = {
           r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
-          f: f.origin.municipality || '', t: f.destination.municipality || '', a: airline,
+          f: f.origin.municipality || '', t: f.destination.municipality || '', fn: f.origin.name || '', tn: f.destination.name || '', a: airline,
           o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude] };
+        else if (airline) info[cs] = { r: '', a: airline };
         if (info[cs]) hub.routes(info);
       });
     }

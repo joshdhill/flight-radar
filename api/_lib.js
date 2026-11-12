@@ -74,6 +74,8 @@ export function compactRow(a, route) {
     Math.round(a.gs || 0), Math.round(a.track ?? a.true_heading ?? 0), Math.round(a.baro_rate ?? a.geom_rate ?? 0),
     +a.lat.toFixed(5), +a.lon.toFixed(5), +(a.seen_pos ?? a.seen ?? 0).toFixed(1),
     militaryFlag(a), route || '', a.squawk || '', a.type || '',
+    // owner asked the FAA to keep them private (dbFlags 4 = PIA, 8 = LADD)
+    (a.dbFlags & 8) ? 'ladd' : (a.dbFlags & 4) ? 'pia' : '',
   ];
 }
 

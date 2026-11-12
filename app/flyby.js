@@ -1,8 +1,11 @@
-/* Plane Sight — the military flyby card.
-   When a military aircraft is about to pass close to home, a big card slides up over the map:
-   an illustration of the aircraft crossing a night sky, who flies it, what it is and what the
-   flight is, with a live countdown to its closest point. It can also be opened by hand from the
-   selected-aircraft card ("Briefing"). */
+/* Plane Sight — the big aircraft card.
+   Military flybys: when a military aircraft is about to pass close to home, the card slides up
+   over the map with an illustration of it crossing a night sky, who flies it, what it is and what
+   the flight is, with a live countdown to its closest point.
+   Any aircraft: opened by hand (second tap on a plane, or the details button), it shows the
+   briefing for military aircraft, and for everything else a photo of that exact airframe (or a
+   drawing), the cities and airports, maker and model, what the plane is used for, and the public
+   owner and operator records. */
 (function (root) {
   'use strict';
   var RAD = Math.PI / 180;
@@ -31,13 +34,15 @@
           '<div class="fb-ring"></div>' +
           '<svg class="fb-horizon" viewBox="0 0 800 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 70 L0 44 C20 40 30 30 44 34 C56 22 70 26 78 36 L96 36 L96 26 L112 18 L128 26 L128 38 C150 30 166 34 176 42 C190 28 210 30 222 40 L240 40 L240 30 L256 22 L272 30 L272 42 C300 36 320 40 336 46 C352 34 372 32 386 44 C400 30 420 28 436 40 L452 40 L452 28 L470 20 L488 28 L488 42 C512 34 540 38 556 46 C572 32 596 30 612 42 C628 36 640 38 652 44 L668 44 L668 32 L684 24 L700 32 L700 44 C720 38 744 34 760 42 C776 36 790 38 800 42 L800 70 Z"/><g class="fb-lights"><rect x="104" y="30" width="3" height="3"/><rect x="118" y="30" width="3" height="3"/><rect x="250" y="34" width="3" height="3"/><rect x="462" y="32" width="3" height="3"/><rect x="476" y="32" width="3" height="3"/><rect x="678" y="36" width="3" height="3"/></g></svg>' +
           '<div class="fb-fly" id="fbFly"><div class="fb-trail"></div><div class="fb-plane" id="fbPlane"></div></div>' +
+          '<div class="fb-hero" id="fbHero" hidden><img id="fbHeroImg" alt="Photo of this exact aircraft" referrerpolicy="no-referrer"><span class="fb-credit">This aircraft · photo: airport-data.com</span></div>' +
           '<figure class="fb-photo" id="fbPhotoWrap" hidden><img id="fbPhoto" alt="Photo of this exact aircraft" referrerpolicy="no-referrer"><figcaption>This airframe · airport-data.com</figcaption></figure>' +
           '<span class="fb-formation" id="fbFormation" hidden></span>' +
         '</div>' +
         '<div class="fb-body">' +
           '<div class="fb-id"><div class="fb-names"><h2 id="fbName"></h2><p id="fbSub"></p></div><span class="fb-svc" id="fbSvc"><b id="fbSvcName"></b></span></div>' +
           '<dl class="fb-stats"><div><dt id="fbCpaK">Closest</dt><dd id="fbCpa"></dd></div><div><dt>Altitude</dt><dd id="fbAlt"></dd></div><div><dt>Speed</dt><dd id="fbSpd"></dd></div><div><dt>Heading</dt><dd id="fbHdg"></dd></div></dl>' +
-          '<div class="fb-notes"><section id="fbMissionWrap"><h3 id="fbMissionTitle">The flight</h3><p id="fbMission"></p></section><section><h3 id="fbRole">The aircraft</h3><p id="fbAbout"></p></section></div>' +
+          '<div class="fb-notes"><section id="fbMissionWrap"><h3 id="fbMissionTitle">The flight</h3><p id="fbMission"></p></section><section><h3 id="fbRole">The aircraft</h3><p id="fbAbout"></p><p class="fb-where" id="fbWhere" hidden></p></section>' +
+            '<section class="fb-owner" id="fbOwnerWrap" hidden><h3>Owner and operator</h3><dl class="fb-facts" id="fbOwner"></dl></section></div>' +
           '<footer class="fb-actions"><button type="button" class="btn primary" id="fbTrack">Track on map</button><button type="button" class="btn" id="fbClose">Close</button>' +
           '<span class="fb-spacer"></span><button type="button" class="linkbtn" id="fbSound" aria-pressed="false"></button></footer>' +
         '</div>' +
@@ -58,6 +63,8 @@
     card.addEventListener('focusin', function () { paused = true; });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !root$.hidden) close(); });
     $('fbPhoto').addEventListener('error', function () { $('fbPhotoWrap').hidden = true; });
+    // no photo after all: fall back to the drawing
+    $('fbHeroImg').addEventListener('error', function () { if (!cur) return; cur.noPhoto = true; cur.sig = ''; render(true); });
 
     /* ---------- sound: a soft two-note chime, only when turned on ---------- */
     var actx = null;
@@ -85,9 +92,11 @@
       });
     }
     function render(full) {
+      if (cur.civil) { renderCivil(full); renderStats(cur.ac); return; }
       var a = find(cur.id) || cur.ac;
       cur.ac = a;
       var info = opt.info(a.id) || {}, b = M.briefing(a, info);
+      if (full) { $('fbHero').hidden = true; $('fbFly').hidden = false; $('fbOwnerWrap').hidden = true; $('fbWhere').hidden = true; }
       if (full || cur.sig !== b.art + b.livery + b.aircraft.name + b.service.key) {
         cur.sig = b.art + b.livery + b.aircraft.name + b.service.key;
         var img = A.heroImage(a.type, b.art);
@@ -110,6 +119,9 @@
       var wm = wingmen(a);
       $('fbFormation').hidden = !wm.length; set('fbFormation', 'Flight of ' + (wm.length + 1));
       wm.forEach(function (w) { seen[w.id] = Date.now(); });
+      renderStats(a);
+    }
+    function renderStats(a) {
       set('fbAlt', C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : ''));
       set('fbSpd', Math.round(a.gs) + ' kt');
       set('fbHdg', String(Math.round(a.trk) % 360).padStart(3, '0') + '° ' + C.card8(a.trk));
@@ -121,18 +133,79 @@
       set('fbEta', eta); set('fbCpa', cpa);
       set('fbCpaK', c && c.receding ? 'Closest it came' : 'Closest to home');
     }
+    // Civilian aircraft: where it's going, what it is, who owns and flies it.
+    function fact(dl, k, v, note) {
+      if (!v) return;
+      var dt = document.createElement('dt'), dd = document.createElement('dd');
+      dt.textContent = k; dd.textContent = v;
+      if (note) { var sm = document.createElement('small'); sm.textContent = note; dd.append(sm); }
+      dl.append(dt, dd);
+    }
+    function miles(la1, lo1, la2, lo2) { return C.distanceNm(la1, lo1, la2, lo2) * 1.15078; }
+    function renderCivil(full) {
+      var a = find(cur.id) || cur.ac; cur.ac = a;
+      var K = root.CivInfo, info = opt.info(a.id) || {}, rd = opt.route ? opt.route(a) : null;
+      var air = K.aircraft(a, info), op = K.operator(a, info, rd && rd.airline);
+      var photo = !cur.noPhoto && opt.photos && (info.photoBig || info.photo);
+      var sig = [air.name, rd && rd.code, rd && rd.from.city, rd && rd.from.name, photo, info.owner, info.maker, op && op.name, a.priv].join('|');
+      if (full || cur.sig !== sig) {
+        cur.sig = sig;
+        var west = a.trk > 180 && a.trk < 360;
+        $('fbHero').hidden = !photo; $('fbFly').hidden = !!photo;
+        if (photo && $('fbHeroImg').getAttribute('src') !== photo) $('fbHeroImg').setAttribute('src', photo);
+        if (!photo) {
+          $('fbPlane').innerHTML = A.svg(air.art, 'civil', Object.assign({ mirror: west }, air.opts));
+          $('fbFly').classList.toggle('west', west); $('fbFly').classList.toggle('heli', /^heli|tiltrotor/.test(air.art));
+        }
+        $('fbPhotoWrap').hidden = true; $('fbFormation').hidden = true;
+        var cities = rd && rd.from.city && rd.to.city;
+        set('fbName', cities ? rd.from.city + ' → ' + rd.to.city : air.name);
+        var opName = op && op.name ? op.name : op ? 'Private flight' : '';
+        $('fbSvc').hidden = !opName; $('fbSvc').className = 'fb-svc svc-civil'; set('fbSvcName', opName);
+        // the flight
+        var flight;
+        if (rd) {
+          var fromTxt = (rd.from.name || rd.from.city || rd.from.code) + ' (' + rd.from.code + ')', toTxt = (rd.to.name || rd.to.city || rd.to.code) + ' (' + rd.to.code + ')';
+          flight = 'From ' + fromTxt + ' to ' + toTxt + '.';
+          if (isFinite(rd.from.lat) && isFinite(rd.to.lat)) {
+            var total = miles(rd.from.lat, rd.from.lon, rd.to.lat, rd.to.lon), done = miles(rd.from.lat, rd.from.lon, a.lat, a.lon);
+            var pct = Math.round(done / total * 100);
+            if (total > 30) flight += ' A ' + Math.round(total).toLocaleString() + '-mile trip, ' + (pct < 3 ? 'just getting started.' : pct > 96 ? 'almost there.' : 'about ' + pct + '% of the way there.');
+          }
+        } else flight = 'No published route for ' + (a.call || 'this flight') + ', which is common for private, charter and training flights.';
+        $('fbMissionWrap').hidden = false; $('fbMissionWrap').parentNode.classList.remove('solo');
+        set('fbMissionTitle', 'The flight'); set('fbMission', flight);
+        // the aircraft
+        set('fbRole', air.name); set('fbAbout', air.role + '. ' + air.blurb);
+        $('fbWhere').hidden = !air.where; set('fbWhere', air.where ? 'Where you’ll see it: ' + air.where : '');
+        // owner and operator (public registry records)
+        var dl = $('fbOwner'); dl.textContent = '';
+        if (op && op.name) fact(dl, 'Operator', op.name, op.note);
+        else if (op && op.note) fact(dl, 'Operator', 'Private or charter', op.note);
+        if (a.priv) fact(dl, 'Registered owner', 'Withheld', 'The owner asked the FAA to keep this aircraft’s details private.');
+        else if (info.owner) fact(dl, 'Registered owner', info.owner + (info.country && !/united states/i.test(info.country) ? ' (' + info.country + ')' : ''), K.ownerNote(info.owner, a, op && op.name));
+        fact(dl, 'Manufacturer', info.maker || air.maker);
+        fact(dl, 'Registration', a.reg && a.reg !== a.call ? a.reg : a.reg ? a.reg : '');
+        fact(dl, 'Transponder code', (a.id || '').toUpperCase());
+        $('fbOwnerWrap').hidden = !dl.children.length;
+      }
+      var subParts = [a.call, rd ? rd.code.replace('-', ' → ') : '', air.name !== $('fbName').textContent ? air.name : (a.reg || '')];
+      set('fbSub', subParts.filter(function (x, i) { return x && subParts.indexOf(x) === i; }).join(' · '));
+    }
     function mmss(sec) { sec = Math.max(0, Math.round(sec)); var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
 
     function open(a, manual) {
-      cur = { id: a.id, ac: a, manual: !!manual, sig: '' };
-      seen[a.id] = Date.now(); lsSet('og-flyby-seen', seen);
+      var civil = !a.mil;
+      cur = { id: a.id, ac: a, manual: !!manual, civil: civil, sig: '' };
+      if (!civil) { seen[a.id] = Date.now(); lsSet('og-flyby-seen', seen); }
       if (opt.prefetch) opt.prefetch(a);
-      set('fbKicker', manual ? 'Military aircraft · briefing' : 'Military flyby');
-      root$.classList.toggle('manual', !!manual);
+      set('fbKicker', civil ? 'Aircraft details' : manual ? 'Military aircraft · briefing' : 'Military flyby');
+      root$.classList.toggle('manual', !!manual); root$.classList.toggle('civil', civil);
+      $('fbSvc').hidden = false;
       render(true);
       root$.hidden = false;
       root$.classList.remove('in'); void root$.offsetWidth; root$.classList.add('in');
-      left = manual ? 60000 : SHOW_MS; paused = false; lastTick = Date.now();
+      left = manual ? Infinity : SHOW_MS; paused = false; lastTick = Date.now(); // opened by hand: stays until you close it
       clearInterval(timer); timer = setInterval(tick, 500);
       if (manual) $('fbClose').focus({ preventScroll: true });
       else chime();
@@ -148,7 +221,7 @@
       if (!paused && !document.hidden) left -= dt;
       var a = find(cur.id);
       if (a) render(false);
-      $('fbTimer').style.transform = 'scaleX(' + Math.max(0, left / (cur.manual ? 60000 : SHOW_MS)).toFixed(3) + ')';
+      if (!cur.manual) $('fbTimer').style.transform = 'scaleX(' + Math.max(0, left / SHOW_MS).toFixed(3) + ')';
       var gone = !a || (!cur.manual && a.d > 8 && C.cpa(a) && C.cpa(a).receding);
       if (left <= 0 || gone) close();
     }
@@ -187,7 +260,7 @@
       if (a && a.d < 12 && root$.hidden) open(a, false);
     });
 
-    return { check: check, open: function (a) { open(a, true); }, shown: function (id) { return !!(seen[id] && Date.now() - seen[id] < COOLDOWN_MS); }, isOpen: function () { return !root$.hidden; }, openId: function () { return cur && cur.id; }, brief: function (a) { return M.briefing(a, opt.info(a.id) || {}); } };
+    return { check: check, open: function (a) { open(a, true); }, isCivil: function () { return !!(cur && cur.civil); }, shown: function (id) { return !!(seen[id] && Date.now() - seen[id] < COOLDOWN_MS); }, isOpen: function () { return !root$.hidden; }, openId: function () { return cur && cur.id; }, brief: function (a) { return M.briefing(a, opt.info(a.id) || {}); } };
   }
 
   root.Flyby = { create: create };

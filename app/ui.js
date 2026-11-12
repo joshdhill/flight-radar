@@ -47,7 +47,24 @@
     paused: (T.copy && T.copy.paused) || function (ago) { return ['Flight feed is slow', 'The last update arrived ' + ago + '. This page keeps retrying on its own.']; },
     needsOk: (T.copy && T.copy.needsOk) || ['Allow the live feed', 'Press Start to connect.']
   };
-  var routeInfo = {}, acInfo = {};
+  var airlineOf = {}, routeInfo = {}, acInfo = {};
+  // The route with its cities and airports, for the cards: { code, from, to, airline }.
+  function routeDetail(a) {
+    var r = routeOf(a), ri = routeInfo[a.call] || {};
+    if (!r) return null;
+    var p = r.split('-'), from = { code: p[0] }, to = { code: p[1] };
+    (ri.legs || []).forEach(function (L) {
+      if (L[0] === p[0] && !from.city) { from.city = L[3]; from.name = L[4] || ''; from.lat = L[1]; from.lon = L[2]; }
+      if (L[0] === p[1]) { to.city = L[3]; to.name = L[4] || ''; to.lat = L[1]; to.lon = L[2]; }
+    });
+    if (ri.r === r) {
+      from.city = from.city || ri.f; to.city = to.city || ri.t; from.name = from.name || ri.fn || ''; to.name = to.name || ri.tn || '';
+      if (ri.o && !isFinite(from.lat)) { from.lat = +ri.o[0]; from.lon = +ri.o[1]; }
+      if (ri.d && !isFinite(to.lat)) { to.lat = +ri.d[0]; to.lon = +ri.d[1]; }
+    }
+    return { code: r, from: from, to: to, airline: ri.a || airlineOf[a.call] || '' };
+  }
+  function cityLine(rd) { return rd && rd.from.city && rd.to.city ? rd.from.city + ' → ' + rd.to.city : ''; }
   function routeOf(a) {
     if (a.route) return a.route;
     var ri = routeInfo[a.call];
@@ -559,15 +576,16 @@
     if (!(ac.d < 2) && c && !c.receding && c.d < 3 && c.t < 900) badge('Approaching');
     text('selCall', ac.call);
     if (lastLookup !== ac.id) { lastLookup = ac.id; T.lookup(ac, hub); }
-    var ri = routeInfo[ac.call], ai = acInfo[ac.id];
-    text('selRoute', C.routeText(routeOf(ac)));
-    var shownRoute = routeOf(ac), riOk = ri && ri.r === shownRoute;
-    text('selRouteMore', riOk ? [ri.f && ri.t ? ri.f + ' to ' + ri.t : '', ri.a].filter(Boolean).join(' · ') : (ai && ai.owner && !ac.mil ? ai.owner : ''));
+    var ai = acInfo[ac.id], rd = routeDetail(ac);
     var br = ac.mil && window.MilInfo ? window.MilInfo.briefing(ac, ai) : null;
-    text('selType', [br ? br.aircraft.name : ai && ai.type ? ai.type : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
-    text('selNote', br ? [br.service.name, br.mission ? br.mission.title : ''].filter(Boolean).join(' · ') : C.callsignNote(ac.call));
-    $('btnBrief').hidden = !(br && FB);
-    if (ac.mil && T.prefetch) T.prefetch(ac);
+    var civ = !ac.mil && window.CivInfo ? window.CivInfo : null, op = civ ? civ.operator(ac, ai, rd && rd.airline) : null;
+    // first tap: the cities, then the airport codes and airline
+    text('selRoute', cityLine(rd) || (rd ? C.routeText(rd.code) : ''));
+    text('selRouteMore', rd ? [cityLine(rd) ? C.routeText(rd.code) : '', op && op.name].filter(Boolean).join(' · ') : (op && op.name ? op.name : op && op.note ? 'Private flight' : ''));
+    text('selType', [br ? br.aircraft.name : civ ? civ.aircraft(ac, ai).name : ac.typeName, ac.reg && ac.reg !== ac.call ? ac.reg : '', ac.mlat ? 'MLAT position' : ''].filter(Boolean).join(' · ') + (state.auto ? ' · nearest' : ''));
+    text('selNote', br ? [br.service.name, br.mission ? br.mission.title : ''].filter(Boolean).join(' · ') : op && op.note ? op.note : C.callsignNote(ac.call));
+    $('btnBrief').hidden = !FB; text('btnBrief', ac.mil ? 'Open briefing' : 'Plane details: photo, maker, owner');
+    if (T.prefetch && !state.auto) T.prefetch(ac, hub);
     var ph = $('selPhoto'), photo = T.photos && ai && ai.photo;
     $('selPhotoWrap').hidden = !photo;
     if (photo && ph.getAttribute('src') !== photo) ph.setAttribute('src', photo);
@@ -804,6 +822,7 @@
     var r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = null, bd = 30;
     if (homeEdge && Math.hypot(homeEdge[0] - x, homeEdge[1] - y) < 26) { stopFollow(); state.panX = 0; state.panY = 0; return; }
     feed.list.forEach(function (ac) { if (!ac.vis) return; var d = Math.hypot(ac.px - x, ac.py - y); if (d < bd) { bd = d; best = ac; } });
+    if (best && best.id === state.selId && !state.auto && FB) { FB.open(best); return; } // second tap: details
     if (best) select(best.id); else { state.auto = true; renderPanels(); }
   });
 
@@ -865,16 +884,18 @@
   }
 
   /* ---------- phone: small card for the selected plane, and a handle down to the lists ---------- */
-  $('miniSel').addEventListener('click', function () { $('selCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  // the small card on phones opens the full details (the handle below still scrolls to the lists)
+  $('miniSel').addEventListener('click', function () { var a = findSel(); if (a && FB) FB.open(a); else $('selCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   $('btnPeek').addEventListener('click', function () { document.querySelector('.overlay').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   function renderMini() {
     var mini = $('miniSel'), a = state.auto ? null : findSel();
     if (!a) { mini.hidden = true; return; }
     mini.hidden = false;
-    var rt = routeOf(a);
-    text('msCall', rt ? C.routeText(rt) : a.call);
+    var rd = routeDetail(a), cities = cityLine(rd);
+    text('msCall', cities || (rd ? C.routeText(rd.code) : a.call));
     var br = a.mil && window.MilInfo ? window.MilInfo.briefing(a, acInfo[a.id]) : null;
-    text('msSub', [rt ? a.call : '', br ? br.aircraft.name + ' · ' + br.service.short : C.shortType(a.type), C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '')].filter(Boolean).join(' · '));
+    var op = !a.mil && window.CivInfo ? window.CivInfo.operator(a, acInfo[a.id], rd && rd.airline) : null;
+    text('msSub', [a.call, cities ? rd.code.replace('-', '→') : '', br ? br.aircraft.name + ' · ' + br.service.short : (op && op.name) || C.shortType(a.type), C.fmtAlt(a.alt) + (a.alt < 18000 ? ' ft' : '')].filter(Boolean).join(' · '));
     text('msNum', (a.d < 10 ? a.d.toFixed(1) : Math.round(a.d)) + ' nm ' + C.card8(a.brg));
     mini.classList.toggle('mil', !!a.mil);
   }
@@ -1011,7 +1032,13 @@
       feed.ingest(snap, 'mil', 150000); state.milOk = true; state.lastMil = Date.now(); tracker.update(feed.list, Date.now());
     },
     routes: function (map) {
-      Object.keys(map || {}).forEach(function (cs) { var r = map[cs]; if (r && r.r) routeInfo[cs] = r; });
+      Object.keys(map || {}).forEach(function (cs) {
+        var r = map[cs]; if (!r) return;
+        if (r.a) airlineOf[cs] = r.a;
+        if (!r.r) return;
+        var prev = routeInfo[cs];
+        routeInfo[cs] = Object.assign({}, prev && prev.r === r.r ? prev : {}, r, { a: r.a || (prev && prev.r === r.r && prev.a) || '' });
+      });
     },
     aircraftInfo: function (hex, info) { if (info) acInfo[hex] = Object.assign(acInfo[hex] || {}, info); },
     passes: function (list) { (list || []).forEach(function (p) { if (p && p.ts) tracker.add(p); }); },
@@ -1029,7 +1056,7 @@
   loadPasses();
   T.start(hub);
   var FB = window.Flyby ? window.Flyby.create({
-    core: C, list: function () { return feed.list; }, info: function (id) { return acInfo[id]; }, photos: !!T.photos,
+    core: C, list: function () { return feed.list; }, info: function (id) { return acInfo[id]; }, photos: !!T.photos, route: routeDetail,
     prefetch: function (a) { if (T.prefetch) T.prefetch(a, hub); },
     onTrack: function (id) { select(id, true); if (state.range > 25) { state.range = 10; syncRangeSeg(); } },
     notify: notify
@@ -1064,7 +1091,7 @@
     if (t - lastPanel > 800) { lastPanel = t; renderPanels(); checkAlerts(); }
     requestAnimationFrame(frame);
   }
-  window.PlaneSight = { state: state }; // read-only peek for troubleshooting
+  window.PlaneSight = { state: state, select: function (id) { select(id, false); } }; // for troubleshooting
   renderPanels();
   requestAnimationFrame(frame);
 })();
