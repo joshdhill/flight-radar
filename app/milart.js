@@ -358,6 +358,88 @@
     ].join('');
   };
 
+  /* ---------- light single-engine planes (drawn smaller-scaled: about 27 ft nose to tail) ---------- */
+  // Fixed landing gear: a leg, a wheel and a teardrop wheel fairing.
+  function gearLeg(x0, y0, x1, y1, ids, w) {
+    return '<path d="M' + x0 + ' ' + y0 + ' L' + x1 + ' ' + y1 + '" stroke="#3a4245" stroke-width="' + (w || 4.5) + '" stroke-linecap="round"/>' +
+      wheel(x1 - 1, y1 + 6, 7.5) +
+      path('M' + (x1 - 17) + ' ' + (y1 + 3) + ' C' + (x1 - 17) + ' ' + (y1 - 4) + ' ' + (x1 - 9) + ' ' + (y1 - 7) + ' ' + (x1 + 1) + ' ' + (y1 - 7) +
+        ' C' + (x1 + 11) + ' ' + (y1 - 7) + ' ' + (x1 + 16) + ' ' + (y1 - 2) + ' ' + (x1 + 16) + ' ' + (y1 + 3) +
+        ' C' + (x1 + 16) + ' ' + (y1 + 7) + ' ' + (x1 + 12) + ' ' + (y1 + 9) + ' ' + (x1 + 6) + ' ' + (y1 + 9) + ' L' + (x1 - 10) + ' ' + (y1 + 9) +
+        ' C' + (x1 - 14) + ' ' + (y1 + 9) + ' ' + (x1 - 17) + ' ' + (y1 + 7) + ' ' + (x1 - 17) + ' ' + (y1 + 3) + ' Z', 'url(#' + ids.shade + ')', EDGE);
+  }
+  // Nose: propeller blur, spinner, and (turboprops) an exhaust stack.
+  function noseProp(x, y, p, o) {
+    return prop(x + 10, y, o.turbo ? 42 : 37) +
+      path('M' + (x - 2) + ' ' + (y - 8) + ' C' + (x + 8) + ' ' + (y - 8) + ' ' + (x + 17) + ' ' + (y - 4) + ' ' + (x + 21) + ' ' + y +
+        ' C' + (x + 17) + ' ' + (y + 4) + ' ' + (x + 8) + ' ' + (y + 8) + ' ' + (x - 2) + ' ' + (y + 8) + ' Z', p.top, EDGE) +
+      (o.turbo ? path('M' + (x - 34) + ' ' + (y + 1) + ' L' + (x - 42) + ' ' + (y + 12) + ' L' + (x - 35) + ' ' + (y + 14) + ' L' + (x - 27) + ' ' + (y + 3) + ' Z', '#2a3033') : '');
+  }
+  // Conventional tail: swept fin with rudder, stabilizer at the bottom of the tail cone (or on top: T-tail).
+  function lightTail(p, ids, o, baseX, baseY) {
+    if (o.ttail) return path('M' + (baseX + 6) + ' ' + baseY + ' L' + (baseX - 42) + ' 66 C' + (baseX - 45) + ' 63 ' + (baseX - 49) + ' 62 ' + (baseX - 53) + ' 62 L' + (baseX - 76) + ' 62 L' + (baseX - 86) + ' 135 Z', 'url(#' + ids.shade + ')', EDGE) +
+      '<path d="M' + (baseX - 64) + ' 66 L' + (baseX - 72) + ' 132" ' + LINE + '/>';
+    return path('M' + baseX + ' ' + baseY + ' L' + (baseX - 54) + ' 72 C' + (baseX - 57) + ' 69 ' + (baseX - 61) + ' 68 ' + (baseX - 65) + ' 68 L' + (baseX - 80) + ' 68 L' + (baseX - 87) + ' 134 Z', 'url(#' + ids.shade + ')', EDGE) +
+      '<path d="M' + (baseX - 70) + ' 70 L' + (baseX - 75) + ' 132" ' + LINE + '/>';
+  }
+  function lightStab(p, ids, o) {
+    if (o.ttail) return path('M238 64 C232 60 216 59 198 59 L166 60 L162 64 L166 67 L198 68 C216 68 232 67 238 64 Z', p.dark, EDGE);
+    return path('M238 145 C232 141 216 140 198 140 L160 141 L156 145 L160 148 L198 149 C216 149 232 148 238 145 Z', p.dark, EDGE);
+  }
+  function regMark(o, p, x, y) { return o.letters ? lettering(x, y, o.letters, o.letters.length > 8 ? 7.5 : 9, p) : ''; }
+  // Civilian planes get a simple cheat line down the side.
+  function cheatLine(p, d) { return p.civil ? path(d, p.mark, 'opacity="0.5"') : ''; }
+
+  // High wing on struts: Cessna 150/172/182/206, Caravan.
+  ART.highwing = function (p, ids, o) {
+    var F = 'M500 140 C494 134 482 132 468 132 L440 132 L410 101 L330 101 C316 103 300 110 282 117 L198 128 C186 129 176 131 170 134 L168 146 C182 148 204 150 232 152 L336 167 L432 170 C462 170 488 166 497 158 C502 153 503 145 500 140 Z';
+    return [
+      lightTail(p, ids, o, 256, 121),
+      body(F, p, ids, 0, 0),
+      cheatLine(p, 'M496 149 C470 151 440 153 400 154 L300 149 L200 139 L200 142 L300 152.5 L400 157.5 C440 157 470 155 496 153 Z'),
+      o.pod ? path('M442 170 L306 165 C294 165 288 169 290 174 L302 181 L432 183 C442 183 448 179 448 175 Z', 'url(#' + ids.shade + ')', EDGE) : '',
+      lightStab(p, ids, o),
+      // windshield, door window, rear window, door seams
+      path('M436 130 L410 103 L402 103 L402 130 Z', 'url(#' + ids.glass + ')'),
+      path('M396 106 C396 105 395 104 394 104 L366 104 C365 104 364 105 364 106 L364 126 C364 127 365 128 366 128 L394 128 C395 128 396 127 396 126 Z', 'url(#' + ids.glass + ')'),
+      path('M358 104 L336 104 C330 107 324 112 319 117 L323 124 L358 126 Z', 'url(#' + ids.glass + ')'),
+      '<path d="M400 104 L400 162 M361 104 L361 164" ' + LINE + '/>',
+      noseProp(500, 148, p, o),
+      // wing on top of the cabin, and its strut
+      path('M426 100 C422 92 406 88 388 88 L334 91 L330 96 L334 100 L420 103 C424 103 426 102 426 100 Z', 'url(#' + ids.shade + ')', EDGE),
+      '<path d="M396 166 L377 102" stroke="' + p.dark + '" stroke-width="4" stroke-linecap="round"/>',
+      gearLeg(372, 166, 354, 194, ids), gearLeg(470, 168, 474, 192, ids, 4),
+      regMark(o, p, 262, 141), roundel(318, 147, 7, p),
+      beacon(192, 67), navLight(424, 98, '#3bff8a')
+    ].join('');
+  };
+
+  // Low wing: Piper Cherokee/Archer, Cirrus, Bonanza, TBM, PC-12, T-6 (canopy).
+  ART.lowwing = function (p, ids, o) {
+    var F = 'M500 144 C494 135 482 132 468 132 L438 131 C426 117 414 109 398 107 L354 107 C338 107 320 112 300 118 L198 129 C186 130 176 132 170 135 L168 147 C182 149 204 151 232 153 L336 165 L436 166 C462 166 488 163 497 157 C502 153 503 148 500 144 Z';
+    var glass = 'url(#' + ids.glass + ')';
+    var windows = o.canopy
+      ? path('M438 131 C428 112 410 102 386 100 L340 101 C326 102 314 108 306 118 Z', glass, EDGE) + '<path d="M372 101 L374 124" stroke="' + p.dark + '" stroke-width="3"/>' +
+        '<path d="M420 112 C410 106 398 103 386 103" stroke="rgba(255,255,255,0.35)" stroke-width="2" fill="none"/>'
+      : path('M434 129 C425 118 415 112 404 110 L400 110 L400 129 Z', glass) +
+        path('M394 113 C394 112 393 111 392 111 L364 111 C363 111 362 112 362 113 L362 127 C362 128 363 129 364 129 L392 129 C393 129 394 128 394 127 Z', glass) +
+        path('M356 111 L338 112 C331 114 327 118 325 122 L325 128 C325 129 326 129 327 129 L356 129 Z', glass) +
+        (o.ttail ? path('M318 116 L300 120 L300 128 L318 128 Z', glass) : '');
+    return [
+      lightTail(p, ids, o, 258, 123),
+      body(F, p, ids, 0, 0),
+      cheatLine(p, 'M496 150 C470 151 440 152 400 152 L300 146 L200 138 L200 141 L300 150 L400 156 C440 156 470 155 496 154 Z'),
+      lightStab(p, ids, o),
+      windows,
+      noseProp(500, 150, p, o),
+      // the near wing, under the fuselage
+      path('M434 168 C430 161 414 159 396 159 L334 161 L330 165 L334 169 L428 172 C432 172 434 170 434 168 Z', 'url(#' + ids.shade + ')', EDGE),
+      o.retract ? '' : gearLeg(388, 170, 382, 194, ids) + gearLeg(470, 166, 474, 192, ids, 4),
+      regMark(o, p, 262, 142), roundel(318, 147, 7, p),
+      beacon(o.ttail ? 196 : 194, o.ttail ? 61 : 67), navLight(432, 166, '#3bff8a')
+    ].join('');
+  };
+
   ART.fighter = function (p, ids, o) {
     var F = 'M552 144 C540 137 520 131 498 128 L470 124 C446 119 420 117 392 117 L250 117 C226 117 206 120 190 124 L160 127 L156 152 L196 156 C240 158 300 160 360 160 L398 162 C420 164 444 162 470 156 C500 150 530 148 552 144 Z';
     return [
@@ -397,6 +479,8 @@
   var hero = {};
   // svg(art, livery, opts) -> markup. opts: twin, boom, dome, single, prop, twinTail, piloted, mirror (fly left)
   function svg(art, livery, opts) {
+    // a single propeller belongs on a proper light-plane drawing, not the twin turboprop
+    if (art === 'twinprop' && opts && opts.single) { art = 'lowwing'; opts = Object.assign({ turbo: true, retract: true }, opts); }
     var fn = ART[art] || ART.jet, p = palette(livery, art), id = 'pa' + (++uid);
     var ids = { shade: id + 's', glass: id + 'g', clip: id + 'c' };
     var key = Object.keys(PAL).filter(function (k) { return PAL[k] === p; })[0] || livery;

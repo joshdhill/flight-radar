@@ -103,7 +103,8 @@
         var west = a.trk > 180 && a.trk < 360;
         var plane = $('fbPlane');
         plane.innerHTML = img ? '<img class="hero-img" src="' + img + '" alt="Illustration of the aircraft">' :
-          A.svg(b.art, b.livery, { mirror: west, twin: !!b.aircraft.twin, boom: !!b.aircraft.boom, dome: !!b.aircraft.dome, single: !!b.aircraft.single, prop: !!b.aircraft.prop, twinTail: !!b.aircraft.twinTail, piloted: !!b.aircraft.piloted });
+          A.svg(b.art, b.livery, { mirror: west, twin: !!b.aircraft.twin, boom: !!b.aircraft.boom, dome: !!b.aircraft.dome, single: !!b.aircraft.single, prop: !!b.aircraft.prop, twinTail: !!b.aircraft.twinTail, piloted: !!b.aircraft.piloted,
+            turbo: !!b.aircraft.turbo, retract: !!b.aircraft.retract, ttail: !!b.aircraft.ttail, canopy: !!b.aircraft.canopy, pod: !!b.aircraft.pod });
         $('fbFly').classList.toggle('west', west);
         $('fbFly').classList.toggle('heli', /^heli|tiltrotor/.test(b.art));
         set('fbName', b.aircraft.name);
@@ -154,7 +155,9 @@
         $('fbHero').hidden = !photo; $('fbFly').hidden = !!photo;
         if (photo && $('fbHeroImg').getAttribute('src') !== photo) $('fbHeroImg').setAttribute('src', photo);
         if (!photo) {
-          $('fbPlane').innerHTML = A.svg(air.art, 'civil', Object.assign({ mirror: west }, air.opts));
+          // small planes carry their registration on the tail, like the real thing
+          var reg = /^(highwing|lowwing)$/.test(air.art) ? String(a.reg || '').toUpperCase() : '';
+          $('fbPlane').innerHTML = A.svg(air.art, 'civil', Object.assign({ mirror: west, letters: reg }, air.opts));
           $('fbFly').classList.toggle('west', west); $('fbFly').classList.toggle('heli', /^heli|tiltrotor/.test(air.art));
         }
         $('fbPhotoWrap').hidden = true; $('fbFormation').hidden = true;
