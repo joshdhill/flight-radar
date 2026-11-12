@@ -34,12 +34,12 @@
     return pending[cs];
   }
   // The leg this plane is flying right now (a flight number can fly several legs a day).
-  function legOf(cs, lat, lon) {
+  function legOf(cs, lat, lon, trk, vs) {
     var e = routes[cs];
     if (!e || !e.legs) return null;
     for (var i = 0; i + 1 < e.legs.length; i++) {
       var A = e.legs[i], B = e.legs[i + 1];
-      if (C.onLeg(lat, lon, A[1], A[2], B[1], B[2])) return [A, B];
+      if (C.onLeg(lat, lon, A[1], A[2], B[1], B[2], trk, vs)) return [A, B];
     }
     return null;
   }
@@ -70,7 +70,7 @@
           snap.ac.forEach(function (row) {
             var cs = row[1];
             if (!C.looksLikeAirline(cs)) return;
-            var leg = legOf(cs, row[9], row[10]);
+            var leg = legOf(cs, row[9], row[10], row[7], row[8]);
             if (leg) {
               var code = leg[0][0] + '-' + leg[1][0];
               row[13] = code;
@@ -130,10 +130,10 @@
         fetch('https://api.adsbdb.com/v0/callsign/' + encodeURIComponent(cs)).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
       ]).then(function (res) {
         var f = res[1] && res[1].response && res[1].response.flightroute, info = {};
-        var leg = legOf(cs, ac.lat, ac.lon), airline = (f && f.airline && f.airline.name) || '';
+        var leg = legOf(cs, ac.lat, ac.lon, ac.trk, ac.vs), airline = (f && f.airline && f.airline.name) || '';
         if (leg) info[cs] = { r: leg[0][0] + '-' + leg[1][0], f: leg[0][3], t: leg[1][3], fn: leg[0][4] || '', tn: leg[1][4] || '', a: airline,
           o: [leg[0][1], leg[0][2]], d: [leg[1][1], leg[1][2]] };
-        else if (f && f.origin && f.destination) info[cs] = {
+        else if (f && f.origin && f.destination && C.onLeg(ac.lat, ac.lon, +f.origin.latitude, +f.origin.longitude, +f.destination.latitude, +f.destination.longitude, ac.trk, ac.vs)) info[cs] = {
           r: (f.origin.iata_code || f.origin.icao_code) + '-' + (f.destination.iata_code || f.destination.icao_code),
           f: f.origin.municipality || '', t: f.destination.municipality || '', fn: f.origin.name || '', tn: f.destination.name || '', a: airline,
           o: [f.origin.latitude, f.origin.longitude], d: [f.destination.latitude, f.destination.longitude] };

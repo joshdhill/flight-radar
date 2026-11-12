@@ -40,17 +40,17 @@
       return C.extractJson(textOf(res));
     }
     function fresh(entry, now) { return entry && now - entry.ts < (entry.r ? ROUTE_HIT : ROUTE_MISS); }
-    function routeCode(cs, lat, lon) {
+    function routeCode(cs, lat, lon, trk, vs) {
       var e = routes[cs];
       if (!e || !e.r) return '';
       if (e.legs && e.legs.length > 2) { // multi-stop flight number: show the leg the plane is on
         for (var i = 0; i + 1 < e.legs.length; i++) {
           var A = e.legs[i], B = e.legs[i + 1];
-          if (C.onLeg(lat, lon, A[1], A[2], B[1], B[2])) return A[0] + '-' + B[0];
+          if (C.onLeg(lat, lon, A[1], A[2], B[1], B[2], trk, vs)) return A[0] + '-' + B[0];
         }
         return '';
       }
-      if (e.o && e.d && !C.onLeg(lat, lon, e.o[0], e.o[1], e.d[0], e.d[1])) return ''; // flight number flying a different leg today
+      if (e.o && e.d && !C.onLeg(lat, lon, +e.o[0], +e.o[1], +e.d[0], +e.d[1], trk, vs)) return ''; // flight number flying a different leg today
       return e.r;
     }
     function saveCaches() {
@@ -114,7 +114,7 @@
     async function cycle() {
       var h = hub.home(), now = Date.now();
       var j = await load('https://api.adsb.lol/v2/point/' + h.lat.toFixed(4) + '/' + h.lon.toFixed(4) + '/30');
-      var rows = (j.ac || []).map(function (a) { return C.compactRow(a, routeCode((a.flight || '').trim(), a.lat, a.lon)); }).filter(Boolean);
+      var rows = (j.ac || []).map(function (a) { return C.compactRow(a, routeCode((a.flight || '').trim(), a.lat, a.lon, a.track, a.baro_rate != null ? a.baro_rate : a.geom_rate)); }).filter(Boolean);
       nearSnap = { now: j.now || now, ac: rows };
       hub.near(nearSnap); hub.setMode('live', ''); everHost = true;
       rows.map(function (r) { return [C.distanceNm(h.lat, h.lon, r[9], r[10]), r[1]]; }).sort(function (a, b) { return a[0] - b[0]; })

@@ -245,15 +245,29 @@
     return Math.atan2(y, x);
   }
   // Is (lat, lon) near the great-circle leg from (aLat, aLon) to (bLat, bLon)?
-  function onLeg(lat, lon, aLat, aLon, bLat, bLon) {
+  // Is a plane at (lat, lon) plausibly flying the leg A → B? Route lists are crowd-sourced and a
+  // flight number can fly a different leg (or the same leg backwards) today, so check where the plane
+  // is and, when known, which way it's going (track in degrees, vertical rate in ft/min).
+  function angleDiff(a, b) { return Math.abs(((a - b) % 360 + 540) % 360 - 180); }
+  function onLeg(lat, lon, aLat, aLon, bLat, bLon, trk, vs) {
     if (![aLat, aLon, bLat, bLon].every(function (v) { return typeof v === 'number' && isFinite(v); })) return true; // no coordinates: can't check
-    var R = 3440.065;
-    if (distanceNm(lat, lon, aLat, aLon) < 60 || distanceNm(lat, lon, bLat, bLon) < 60) return true;
-    var d13 = distanceNm(aLat, aLon, lat, lon) / R, d12 = distanceNm(aLat, aLon, bLat, bLon) / R;
+    var R = 3440.065, dA = distanceNm(lat, lon, aLat, aLon), dB = distanceNm(lat, lon, bLat, bLon);
+    var hasTrk = typeof trk === 'number' && isFinite(trk), hasVs = typeof vs === 'number' && isFinite(vs);
+    var toA = bearingRad(lat, lon, aLat, aLon) / RAD, toB = bearingRad(lat, lon, bLat, bLon) / RAD;
+    if (dA < 60 || dB < 60) {
+      // around an airport planes turn every which way, so lean on climbing vs descending
+      if (dA < 60 && hasVs && hasTrk && vs < -500 && angleDiff(trk, toA) < 90 && dB > 60) return false; // landing at the "origin": it's the other way round
+      if (dB < 60 && hasVs && hasTrk && vs > 500 && angleDiff(trk, toB) > 90 && dA > 60) return false;  // taking off from the "destination"
+      return true;
+    }
+    var d13 = dA / R, d12 = distanceNm(aLat, aLon, bLat, bLon) / R;
     var delta = bearingRad(aLat, aLon, lat, lon) - bearingRad(aLat, aLon, bLat, bLon);
     var xt = Math.asin(Math.sin(d13) * Math.sin(delta));
     var at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xt)))) * (Math.cos(delta) < 0 ? -1 : 1);
-    return Math.abs(xt) * R < 150 && at * R > -60 && at * R < d12 * R + 60;
+    if (!(Math.abs(xt) * R < 150 && at * R > -60 && at * R < d12 * R + 60)) return false;
+    // en route the plane should be heading roughly toward the destination, not away from it
+    if (hasTrk && angleDiff(trk, toB) > 90) return false;
+    return true;
   }
 
   root.Core = {

@@ -69,7 +69,7 @@
     if (a.route) return a.route;
     var ri = routeInfo[a.call];
     if (!ri || !ri.r) return '';
-    if (ri.o && ri.d && typeof a.lat === 'number' && !C.onLeg(a.lat, a.lon, ri.o[0], ri.o[1], ri.d[0], ri.d[1])) return '';
+    if (ri.o && ri.d && typeof a.lat === 'number' && !C.onLeg(a.lat, a.lon, +ri.o[0], +ri.o[1], +ri.d[0], +ri.d[1], a.trk, a.vs)) return '';
     return ri.r;
   }
 
@@ -333,6 +333,7 @@
       if (ac.id === state.selId) sel = ac;
     }
     var wideView = state.range > 40; // zoomed far out: military and the selected plane stand out, the rest become small marks
+    var routeDrawn = sel ? drawRoute(sel) : false;
     for (i = 0; i < list.length; i++) {
       ac = list[i]; var tr = ac.trail, n = tr.length; if (n < 2 || !ac.vis) continue;
       var isSel = ac === sel;
@@ -348,7 +349,7 @@
     if (sel && sel.vis) {
       var c = C.cpa(sel), v = 5 * 60 * sel.gs / 3600 * k;
       ctx.save(); ctx.globalAlpha = 0.5; ctx.strokeStyle = col['fg']; ctx.lineWidth = 1.1; ctx.setLineDash([3, 5]);
-      ctx.beginPath(); ctx.moveTo(sel.px, sel.py); ctx.lineTo(sel.px + Math.sin(sel.trk * RAD) * v, sel.py - Math.cos(sel.trk * RAD) * v); ctx.stroke();
+      if (!routeDrawn) { ctx.beginPath(); ctx.moveTo(sel.px, sel.py); ctx.lineTo(sel.px + Math.sin(sel.trk * RAD) * v, sel.py - Math.cos(sel.trk * RAD) * v); ctx.stroke(); }
       if (c && !c.receding && c.t < 1800) {
         var cp = [hp[0] + c.x * k, hp[1] - c.y * k];
         ctx.setLineDash([1, 4]); ctx.beginPath(); ctx.moveTo(hp[0], hp[1]); ctx.lineTo(cp[0], cp[1]); ctx.stroke();
@@ -399,6 +400,128 @@
     });
     drawEdgeMarkers(hp);
   }
+  /* ---------- the selected flight's route: an estimated great-circle line from the departure
+     airport, through the plane, on to the arrival airport. Real flights follow airways, so it's
+     approximate; the part already flown is faint, the part still to go is dashed. ---------- */
+  function gcPath(lat1, lon1, lat2, lon2) {
+    var d = C.distanceNm(lat1, lon1, lat2, lon2), n = Math.max(2, Math.min(160, Math.ceil(d / 12))), pts = [], h = C.getHome();
+    var f1 = lat1 * RAD, l1 = lon1 * RAD, f2 = lat2 * RAD, l2 = lon2 * RAD;
+    var a = [Math.cos(f1) * Math.cos(l1), Math.cos(f1) * Math.sin(l1), Math.sin(f1)], b = [Math.cos(f2) * Math.cos(l2), Math.cos(f2) * Math.sin(l2), Math.sin(f2)];
+    var w = Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))), sw = Math.sin(w);
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, s1 = sw < 1e-9 ? 1 - t : Math.sin((1 - t) * w) / sw, s2 = sw < 1e-9 ? t : Math.sin(t * w) / sw;
+      var x = s1 * a[0] + s2 * b[0], y = s1 * a[1] + s2 * b[1], z = s1 * a[2] + s2 * b[2];
+      var lat = Math.atan2(z, Math.hypot(x, y)) / RAD, lon = Math.atan2(y, x) / RAD;
+      while (lon - h.lon > 180) lon -= 360; while (lon - h.lon < -180) lon += 360;
+      pts.push(proj(lat, lon));
+    }
+    return pts;
+  }
+  // The visible part of the map, less the panels floating over it.
+  function viewRect() {
+    var ins = edgeInsets(), r = { x0: 22, y0: ins[0], x1: W - overlayW() - 22, y1: H - ins[1] };
+    var mini = $('miniSel');
+    if (mini && isPhone() && mini.offsetParent) {
+      var cr = canvas.getBoundingClientRect(), mr = mini.getBoundingClientRect();
+      if (mr.height) r.y1 = Math.min(r.y1, mr.top - cr.top - 8);
+    }
+    return r;
+  }
+  function strokePath(pts, dash, alpha, width) {
+    var vr = { x0: -40, y0: -40, x1: W + 40, y1: H + 40 };
+    ctx.save(); ctx.strokeStyle = col['fg']; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.setLineDash(dash); ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (var i = 1; i < pts.length; i++) {
+      var p = pts[i - 1], q = pts[i];
+      // skip pieces nowhere near the screen (a long dashed line far off screen is slow to draw)
+      if (Math.max(p[0], q[0]) < vr.x0 || Math.min(p[0], q[0]) > vr.x1 || Math.max(p[1], q[1]) < vr.y0 || Math.min(p[1], q[1]) > vr.y1) continue;
+      ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  // Panels floating over the map (stats, buttons, cards), in canvas pixels.
+  function mapPanels() {
+    var cr = canvas.getBoundingClientRect(), out = [];
+    document.querySelectorAll('.mapwrap > .glass, .mapwrap > .peek').forEach(function (el) {
+      if (el.hidden || !el.offsetParent) return;
+      var r = el.getBoundingClientRect();
+      if (r.width && r.height) out.push([r.left - cr.left - 4, r.top - cr.top - 4, r.right - cr.left + 4, r.bottom - cr.top + 4]);
+    });
+    return out;
+  }
+  function inPanel(x, y, panels) { for (var i = 0; i < panels.length; i++) { var q = panels[i]; if (x > q[0] && x < q[2] && y > q[1] && y < q[3]) return true; } return false; }
+  function boxHits(bx, panels) { for (var i = 0; i < panels.length; i++) { var q = panels[i]; if (bx[0] < q[2] && bx[2] > q[0] && bx[1] < q[3] && bx[3] > q[1]) return true; } return false; }
+  // Where a path leaving the plane first goes off the visible map or under a panel.
+  function exitPoint(pts, r, panels) {
+    var open = function (x, y) { return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1 && !inPanel(x, y, panels); };
+    for (var i = 1; i < pts.length; i++) {
+      var p = pts[i - 1], q = pts[i];
+      if (open(q[0], q[1])) continue;
+      // step along this piece to the last open spot
+      var steps = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 4)), lx = p[0], ly = p[1];
+      for (var k = 1; k <= steps; k++) {
+        var x = p[0] + (q[0] - p[0]) * k / steps, y = p[1] + (q[1] - p[1]) * k / steps;
+        if (!open(x, y)) break;
+        lx = x; ly = y;
+      }
+      return [lx, ly, Math.atan2(q[1] - p[1], q[0] - p[0])];
+    }
+    return null;
+  }
+  function airportMark(x, y, text, strong) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, 5.5, 0, Math.PI * 2); ctx.fillStyle = col['land']; ctx.fill();
+    ctx.strokeStyle = col['fg']; ctx.globalAlpha = strong ? 0.95 : 0.6; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fillStyle = col['fg']; ctx.fill();
+    ctx.globalAlpha = 1; ctx.font = '700 11px "B612 Mono", ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.strokeStyle = col['land']; ctx.strokeText(text, x + 10, y);
+    ctx.fillStyle = strong ? col['fg'] : col['fg-muted']; ctx.fillText(text, x + 10, y);
+    ctx.restore();
+  }
+  // Pointer where the route leaves the map, labelled with the airport and how far it is.
+  function edgeTag(e, text, strong, taken, r, panels) {
+    ctx.save(); ctx.translate(e[0], e[1]); ctx.rotate(e[2]);
+    ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-5, -6); ctx.lineTo(-2, 0); ctx.lineTo(-5, 6); ctx.closePath();
+    ctx.lineWidth = 3; ctx.strokeStyle = col['land']; ctx.stroke(); ctx.fillStyle = strong ? col['fg'] : col['fg-muted']; ctx.fill(); ctx.restore();
+    ctx.save(); ctx.font = '700 10px "B612 Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    var tw = ctx.measureText(text).width, h = 14, ux = -Math.cos(e[2]), uy = -Math.sin(e[2]); // pointing back toward the plane
+    // try spots beside the pointer, then a little further back along the line
+    var spots = [];
+    [16, 34, 56].forEach(function (back) {
+      var bx = e[0] + ux * back, by = e[1] + uy * back;
+      spots.push([bx - tw / 2, by - 15], [bx - tw / 2, by + 15], [bx + 10, by], [bx - 10 - tw, by]);
+    });
+    var pick = null;
+    for (var i = 0; i < spots.length && !pick; i++) {
+      var lx = spots[i][0], ly = spots[i][1], bx = [lx - 2, ly - h / 2, lx + tw + 2, ly + h / 2];
+      if (lx < r.x0 - 10 || lx + tw > r.x1 + 10 || ly - h / 2 < r.y0 - 6 || ly + h / 2 > r.y1 + 6) continue;
+      if (boxHits(bx, panels) || boxHits(bx, taken)) continue;
+      pick = spots[i]; taken.push(bx);
+    }
+    if (pick) {
+      ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = col['land']; ctx.strokeText(text, pick[0], pick[1]);
+      ctx.fillStyle = strong ? col['fg'] : col['fg-muted']; ctx.fillText(text, pick[0], pick[1]);
+    }
+    ctx.restore();
+  }
+  function drawRoute(sel) {
+    var rd = routeDetail(sel);
+    if (!rd || !isFinite(rd.from.lat) || !isFinite(rd.from.lon) || !isFinite(rd.to.lat) || !isFinite(rd.to.lon) || typeof sel.lat !== 'number') return false;
+    var back = gcPath(sel.lat, sel.lon, rd.from.lat, rd.from.lon), ahead = gcPath(sel.lat, sel.lon, rd.to.lat, rd.to.lon);
+    strokePath(back, [], 0.22, 1.6);
+    strokePath(ahead, [7, 6], 0.62, 1.7);
+    var r = viewRect(), panels = mapPanels(), taken = [[sel.px - 24, sel.py - 24, sel.px + 24, sel.py + 24]];
+    var inView = function (p) { return p[0] >= r.x0 && p[0] <= r.x1 && p[1] >= r.y0 && p[1] <= r.y1 && !inPanel(p[0], p[1], panels); };
+    var planeIn = inView([sel.px, sel.py]);
+    [[ahead, rd.to, true, 'to '], [back, rd.from, false, 'from ']].forEach(function (s) {
+      var end = s[0][s[0].length - 1], code = s[1].code, nm = C.distanceNm(sel.lat, sel.lon, s[1].lat, s[1].lon);
+      var dist = nm < 10 ? nm.toFixed(1) : Math.round(nm).toLocaleString();
+      if (inView(end)) airportMark(end[0], end[1], code + (state.range <= 40 && s[1].city ? ' · ' + s[1].city : ''), s[2]);
+      else if (planeIn) { var e = exitPoint(s[0], r, panels); if (e) edgeTag(e, s[3] + code + ' ' + dist + ' nm', s[2], taken, r, panels); }
+    });
+    return true;
+  }
+
   // Military aircraft outside the view get a pointer at the map edge.
   // Space taken by the floating panels at the top and bottom of the map (phones).
   function edgeInsets() { return isPhone() ? [126, 112] : [22, 40]; }
