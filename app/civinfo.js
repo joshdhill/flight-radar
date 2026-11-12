@@ -247,10 +247,24 @@
     return null;
   }
   // How to read the registered owner (the operator is who flies it; the owner is on the registry).
+  // Words too common in airline names to tell two companies apart ("Prime Air" vs "Air Transport International").
+  var COMMON_WORDS = /^(air|airline|airlines|airways|aviation|international|transport|express|cargo|lines|jet|jets|the|inc|llc|corp|services|group|company)$/;
+  function keyWords(name) { return String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 3 && !COMMON_WORDS.test(w); }); }
+  function sameCompany(owner, opName) {
+    var o = ' ' + String(owner || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ') + ' ';
+    return keyWords(opName).some(function (w) { return o.indexOf(' ' + w + ' ') >= 0; });
+  }
+  // Big airlines often own the planes their regional and cargo partners fly for them.
+  var BIG_OWNERS = [[/\bamerican airlines\b/, 'American'], [/\bdelta air lines\b/, 'Delta'], [/\bunited airlines\b/, 'United'], [/\balaska airlines\b/, 'Alaska'],
+    [/\bprime air\b|\bamazon\b/, 'Amazon'], [/\bfedex\b|\bfederal express\b/, 'FedEx'], [/\bups\b|united parcel/, 'UPS'], [/\bdhl\b/, 'DHL']];
   function ownerNote(owner, ac, opName) {
     if (!owner) return '';
-    var o = owner.toLowerCase(), firstWord = (opName || '').toLowerCase().split(' ')[0];
-    if (firstWord && firstWord.length > 2 && o.indexOf(firstWord) >= 0) return 'The airline owns this plane itself.';
+    var o = owner.toLowerCase();
+    if (opName && sameCompany(owner, opName)) return 'Owned by the same company that flies it.';
+    if (opName) for (var i = 0; i < BIG_OWNERS.length; i++) if (BIG_OWNERS[i][0].test(o)) {
+      if (BIG_OWNERS[i][0].test(opName.toLowerCase())) return 'Owned by the same company that flies it.';
+      return BIG_OWNERS[i][1] + ' owns this plane, and ' + opName + ' flies it for them under contract.';
+    }
     if (/trust|trustee/.test(o)) return 'A trust company holding the registration for the real owner, which is common for privately owned and leased aircraft.';
     if (/bank|leasing|capital|aviation finance|aercap|smbc|avolon|air lease|aircastle/.test(o)) return 'A bank or leasing company. Airlines lease many of their planes.';
     var small = ac && /^(bizjet|prop|heli)$/.test(ac.cls);
