@@ -261,6 +261,12 @@
     if (!owner) return '';
     var o = owner.toLowerCase();
     if (opName && sameCompany(owner, opName)) return 'Owned by the same company that flies it.';
+    var brand = /\b(united express|american eagle|delta connection|alaska horizon|air canada express)\b/.exec(o);
+    if (brand) {
+      var main = { 'united express': 'United', 'american eagle': 'American', 'delta connection': 'Delta', 'alaska horizon': 'Alaska', 'air canada express': 'Air Canada' }[brand[1]];
+      var label = brand[1].replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      return (opName ? opName : 'A regional airline') + ' flies this plane for ' + main + ', under the ' + label + ' name.';
+    }
     if (opName) for (var i = 0; i < BIG_OWNERS.length; i++) if (BIG_OWNERS[i][0].test(o)) {
       if (BIG_OWNERS[i][0].test(opName.toLowerCase())) return 'Owned by the same company that flies it.';
       return BIG_OWNERS[i][1] + ' owns this plane, and ' + opName + ' flies it for them under contract.';
