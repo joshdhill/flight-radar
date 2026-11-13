@@ -23,12 +23,13 @@ export async function GET(request) {
   const hit = cache.get(hex);
   if (!debug && hit && Date.now() - hit.at < 60000) return reply(hit.body);
 
+  const t0 = Date.now();
   try {
     const res = await fetch(`https://opensky-network.org/api/tracks/all?icao24=${hex}&time=0`, {
-      headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(debug ? 25000 : 9000),
     });
     const text = await res.text();
-    if (debug) return reply({ status: res.status, remaining: res.headers.get('x-rate-limit-remaining'), head: text.slice(0, 300) }, 200, 0);
+    if (debug) return reply({ status: res.status, ms: Date.now() - t0, remaining: res.headers.get('x-rate-limit-remaining'), head: text.slice(0, 300) }, 200, 0);
     if (res.status === 404) { const body = { src: 'opensky', path: [] }; cache.set(hex, { at: Date.now(), body }); return reply(body); }
     if (!res.ok) throw new Error(`OpenSky answered ${res.status}`);
     const j = JSON.parse(text);
@@ -40,6 +41,6 @@ export async function GET(request) {
     if (cache.size > 300) cache.delete(cache.keys().next().value);
     return reply(body);
   } catch (e) {
-    return reply({ error: 'No track available right now.', detail: String(e.message || e) }, 502, 10);
+    return reply({ error: 'No track available right now.', detail: String(e.message || e), ms: Date.now() - t0 }, 502, 10);
   }
 }
